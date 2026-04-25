@@ -1,0 +1,80 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+# Build
+cargo build --all-targets
+
+# Run tests (all)
+cargo test --all-targets
+
+# Run a single test by name
+cargo test <test_name>
+
+# Run doc tests
+cargo test --doc
+
+# Format check (CI enforces this)
+cargo fmt --all -- --check
+
+# Apply formatting
+cargo fmt --all
+
+# Lint (warnings are errors in CI: RUSTFLAGS="-D warnings")
+cargo clippy --all-targets -- -D warnings
+
+# Run the tool against this repo (dogfood)
+cargo llvm-cov --lcov --output-path lcov.info --workspace
+cargo run --release -- --lcov lcov.info --threshold 30 --fail-above
+```
+
+## Architecture
+
+The tool has four orthogonal modules that feed into a pipeline:
+
+```
+rust-code-analysis (tree-sitter AST)    LCOV file (cargo llvm-cov / tarpaulin)
+         │                                        │
+         ▼                                        ▼
+  src/complexity.rs                      src/coverage.rs
+  FunctionComplexity {                   HashMap<PathBuf, FileCoverage>
+    file, name, start_line,              FileCoverage { lines: BTreeMap<u32, u64> }
+    end_line, cyclomatic }
+         │                                        │
+         └──────────────┬───────────────────────┘
+                        ▼
+                  src/merge.rs           ← path normalization lives here
+                  Vec<CrapEntry>
+                        │
+                        ▼
+                  src/report.rs
+                  (human table or JSON)
+```
+
+**`src/score.rs`** — Pure formula: `CRAP(m) = comp(m)² × (1 − cov(m)/100)³ + comp(m)`. No I/O, no dependencies on other modules.
+
+**`src/complexity.rs`** — Wraps `rust-code-analysis` to walk a directory tree (`analyze_tree`) or a single file (`analyze_file`) and extract `FunctionComplexity` tuples. Uses `ignore` crate to respect `.gitignore`. Only `SpaceKind::Function` nodes are collected; file-level and impl-level nodes are skipped.
+
+**`src/coverage.rs`** — Parses LCOV files using the `lcov` crate. Only consumes `SF` (source file), `DA` (line data), and `end_of_record` records. Path normalization is deliberately absent here — that responsibility belongs to `merge`.
+
+**`src/merge.rs`** — The critical join layer. Uses `PathIndex` with two-level lookup:
+- **Fast path**: canonicalized absolute paths → direct hash lookup.
+- **Slow path**: component-wise suffix matching for relative LCOV paths (e.g., `src/foo.rs` matches `/home/alice/project/src/foo.rs`).
+- **Critical invariant**: relative paths are never canonicalized against CWD (regression test `relative_coverage_paths_are_not_resolved_against_cwd` pins this).
+
+**`src/main.rs`** — CLI via `clap`. Handles the `cargo crap` subcommand invocation by stripping the leading `crap` argument when detected.
+
+## Key design decisions
+
+- Coverage is computed by intersecting AST-derived line spans (from complexity pass) with `DA` records in the LCOV file. Function-level LCOV records (`FN`/`FNDA`) are intentionally ignored because they only give the start line, not the end.
+- `--missing pessimistic` (default) treats functions with no coverage data as 0% covered. This is the right default for CI gates — unmatched files are a red flag, not a silent pass.
+- Files that fail to parse during `analyze_tree` emit a warning to stderr and are skipped, to avoid aborting a CI run over a single corrupt file.
+
+## Tests
+
+- Unit tests live in each module (`#[cfg(test)]` blocks in `src/*.rs`).
+- The integration test in `tests/integration.rs` exercises the full pipeline against `tests/fixtures/sample_project/` and is the only test that catches path-matching regressions across the complexity/coverage boundary.
+- The fixture includes a deliberate relative-path LCOV file to exercise suffix matching.
