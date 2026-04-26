@@ -255,6 +255,167 @@ fn nonexistent_path_exits_with_error() {
         .stderr(predicate::str::contains("does not exist"));
 }
 
+// --- --format github ---
+
+#[test]
+fn github_format_emits_warning_annotations() {
+    // crappy (CC=12, 0% cov) is above threshold=30 and must produce a ::warning.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("github")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("::warning"))
+        .stdout(predicate::str::contains("crappy"));
+}
+
+#[test]
+fn github_format_is_empty_when_threshold_is_very_high() {
+    // Nothing above 9999 → no annotations, stdout is empty.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("github")
+        .arg("--threshold")
+        .arg("9999")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+}
+
+// --- --exclude ---
+
+#[test]
+fn exclude_drops_matching_files_from_output() {
+    // The fixture src dir contains lib.rs with trivial/moderate/crappy.
+    // Excluding the whole src dir must produce an empty JSON array.
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--exclude")
+        .arg("**/*.rs") // exclude every .rs file under --path
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let entries: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(
+        entries.as_array().map(|a| a.len()),
+        Some(0),
+        "--exclude '**/*.rs' must produce empty output"
+    );
+}
+
+#[test]
+fn exclude_invalid_glob_exits_with_error() {
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--exclude")
+        .arg("[invalid")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid exclude pattern"));
+}
+
+// --- --allow ---
+
+#[test]
+fn allow_suppresses_matching_function() {
+    // trivial appears without --allow.
+    let output_before = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+    let before: serde_json::Value =
+        serde_json::from_slice(&output_before.stdout).expect("valid JSON");
+    let names_before: Vec<_> = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["function"].as_str())
+        .collect();
+    assert!(
+        names_before.contains(&"trivial"),
+        "trivial must appear without --allow"
+    );
+
+    // trivial is suppressed with --allow trivial.
+    let output_after = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--allow")
+        .arg("trivial")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+    let after: serde_json::Value =
+        serde_json::from_slice(&output_after.stdout).expect("valid JSON");
+    let names_after: Vec<_> = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["function"].as_str())
+        .collect();
+    assert!(
+        !names_after.contains(&"trivial"),
+        "--allow trivial must suppress it, got: {names_after:?}"
+    );
+}
+
+#[test]
+fn allow_wildcard_suppresses_all_matching() {
+    // --allow '*' must suppress everything.
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--allow")
+        .arg("*")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let entries: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(
+        entries.as_array().map(|a| a.len()),
+        Some(0),
+        "--allow '*' must suppress all entries"
+    );
+}
+
+#[test]
+fn allow_invalid_glob_exits_with_error() {
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--allow")
+        .arg("[invalid")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid allow pattern"));
+}
+
 // --- cargo subcommand invocation ---
 
 #[test]

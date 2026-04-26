@@ -16,9 +16,10 @@ A few properties worth internalizing before you use the output:
 
 - A trivial function (CC=1, 100% covered) scores exactly 1.0. That's the
   lower bound.
-- At 100% coverage the quadratic term collapses and the score equals raw
-  complexity. Tests cap the damage complexity can do; they don't erase
-  complexity itself.
+- At 100% coverage the quadratic term collapses and **CRAP equals CC**.
+  When you see matching values in those two columns, that function is
+  fully covered — tests are capping the damage, but the complexity itself
+  remains. It's a good sign, not a bug.
 - Above CC ≈ 30 no amount of coverage keeps you under the default
   threshold of 30. That's not a bug in the formula — it's the formula
   saying "this function is too big to certify as clean, regardless of
@@ -58,16 +59,35 @@ Example output:
 
 ## Flags
 
-| Flag                                      | Default       | Purpose                                               |
-| ----------------------------------------- | ------------- | ----------------------------------------------------- |
-| `--lcov <FILE>`                           | —             | LCOV file from `cargo llvm-cov` or `cargo tarpaulin`. |
-| `--path <DIR>`                            | `.`           | Root to walk for `.rs` files (respects `.gitignore`). |
-| `--threshold <N>`                         | `30`          | Score above which a function is flagged.              |
-| `--min <SCORE>`                           | —             | Hide entries below this score.                        |
-| `--top <N>`                               | —             | Show only the N worst offenders.                      |
-| `--missing {pessimistic,optimistic,skip}` | `pessimistic` | How to score a function with no coverage data.        |
-| `--format {human,json}`                   | `human`       | Output format.                                        |
-| `--fail-above`                            | off           | Exit 1 if any function exceeds `--threshold`.         |
+| Flag                                      | Default       | Purpose                                                                           |
+| ----------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| `--lcov <FILE>`                           | —             | LCOV file from `cargo llvm-cov` or `cargo tarpaulin`.                             |
+| `--path <DIR>`                            | `.`           | Root to walk for `.rs` files (respects `.gitignore`).                             |
+| `--threshold <N>`                         | `30`          | Score above which a function is flagged.                                          |
+| `--min <SCORE>`                           | —             | Hide entries below this score.                                                    |
+| `--top <N>`                               | —             | Show only the N worst offenders.                                                  |
+| `--missing {pessimistic,optimistic,skip}` | `pessimistic` | How to score a function with no coverage data.                                    |
+| `--exclude <GLOB>`                        | —             | Skip files matching this pattern (repeatable). `**` crosses directories.          |
+| `--allow <GLOB>`                          | —             | Suppress functions whose names match this pattern (repeatable). `*` matches `::`. |
+| `--format {human,json,github}`            | `human`       | Output format. `github` emits `::warning` annotations for GitHub Actions.         |
+| `--fail-above`                            | off           | Exit 1 if any function exceeds `--threshold`.                                     |
+
+## Configuration file
+
+Any flag can be set persistently in `.cargo-crap.toml` at the project root
+(or any parent directory — the tool walks up until it finds one). CLI flags
+always take precedence.
+
+```toml
+# .cargo-crap.toml
+threshold = 30.0
+fail-above = true
+missing = "pessimistic"   # pessimistic | optimistic | skip
+exclude = ["tests/**", "benches/**"]
+allow   = ["generated::*"]
+```
+
+All keys are optional. Unknown keys are rejected to catch typos.
 
 ## Design
 

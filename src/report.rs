@@ -3,7 +3,7 @@
 use crate::merge::CrapEntry;
 use crate::score::Severity;
 use anyhow::Result;
-use comfy_table::{presets::UTF8_FULL, Attribute, Cell, CellAlignment, Color, Table};
+use comfy_table::{Attribute, Cell, CellAlignment, Color, Table, presets::UTF8_FULL};
 use owo_colors::OwoColorize;
 use std::io::Write;
 
@@ -18,7 +18,10 @@ enum Grade {
 }
 
 impl Grade {
-    fn of(score: f64, threshold: f64) -> Self {
+    fn of(
+        score: f64,
+        threshold: f64,
+    ) -> Self {
         if score > threshold {
             Self::Crappy
         } else if score > threshold / 3.0 {
@@ -30,17 +33,17 @@ impl Grade {
 
     fn icon(&self) -> &'static str {
         match self {
-            Self::Clean    => "✓",
+            Self::Clean => "✓",
             Self::Moderate => "▲",
-            Self::Crappy   => "✗",
+            Self::Crappy => "✗",
         }
     }
 
     fn color(&self) -> Color {
         match self {
-            Self::Clean    => Color::Green,
+            Self::Clean => Color::Green,
             Self::Moderate => Color::Yellow,
-            Self::Crappy   => Color::Red,
+            Self::Crappy => Color::Red,
         }
     }
 }
@@ -54,8 +57,13 @@ fn coverage_bar(pct: Option<f64>) -> String {
         Some(p) => {
             let filled = ((p / 100.0) * 10.0).round() as usize;
             let filled = filled.min(10);
-            format!("{}{} {:>5.1}%", "█".repeat(filled), "░".repeat(10 - filled), p)
-        }
+            format!(
+                "{}{} {:>5.1}%",
+                "█".repeat(filled),
+                "░".repeat(10 - filled),
+                p
+            )
+        },
     }
 }
 
@@ -64,6 +72,14 @@ fn coverage_bar(pct: Option<f64>) -> String {
 pub enum Format {
     Human,
     Json,
+    /// Emit GitHub Actions workflow commands so that each crappy function
+    /// appears as an inline annotation on the PR diff.
+    ///
+    /// Format: `::warning file={path},line={n},title=CRAP ({score})::{message}`
+    ///
+    /// Only functions that exceed the threshold produce an annotation —
+    /// clean functions are silent.
+    GitHub,
 }
 
 /// Render `entries` in the requested format to `out`.
@@ -80,16 +96,80 @@ pub fn render<W: Write>(
     match format {
         Format::Json => render_json(entries, out),
         Format::Human => render_human(entries, threshold, out),
+        Format::GitHub => render_github(entries, threshold, out),
     }
 }
 
-fn render_json<W: Write>(entries: &[CrapEntry], out: &mut W) -> Result<()> {
+fn render_json<W: Write>(
+    entries: &[CrapEntry],
+    out: &mut W,
+) -> Result<()> {
     serde_json::to_writer_pretty(&mut *out, entries)?;
     out.write_all(b"\n")?;
     Ok(())
 }
 
-fn render_human<W: Write>(entries: &[CrapEntry], threshold: f64, out: &mut W) -> Result<()> {
+/// Emit one `::warning` annotation per function that exceeds the threshold.
+///
+/// Paths are made relative to the current working directory so that GitHub
+/// can resolve them to lines in the repository. If `strip_prefix` fails the
+/// absolute path is used as a fallback.
+///
+/// Special characters (`%`, CR, LF) in the message are percent-encoded per
+/// the GitHub Actions workflow-command spec.
+fn render_github<W: Write>(
+    entries: &[CrapEntry],
+    threshold: f64,
+    out: &mut W,
+) -> Result<()> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+
+    for entry in entries {
+        if entry.crap <= threshold {
+            continue;
+        }
+
+        let file = entry.file.strip_prefix(&cwd).unwrap_or(&entry.file);
+
+        let cov_str = match entry.coverage {
+            Some(c) => format!("{c:.1}%"),
+            None => "—".to_string(),
+        };
+
+        let message = format!(
+            "{fn_name} has CRAP score {crap:.1} (CC={cc}, cov={cov})",
+            fn_name = entry.function,
+            crap = entry.crap,
+            cc = entry.cyclomatic as usize,
+            cov = cov_str,
+        );
+
+        writeln!(
+            out,
+            "::warning file={file},line={line},title=CRAP ({crap:.1} > {threshold})::{msg}",
+            file = file.display(),
+            line = entry.line,
+            crap = entry.crap,
+            threshold = threshold,
+            msg = gha_escape(&message),
+        )?;
+    }
+    Ok(())
+}
+
+/// Percent-encode characters that are special inside GitHub Actions
+/// workflow-command values (`%`, carriage return, newline).
+fn gha_escape(s: &str) -> String {
+    s.replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+}
+
+fn render_human<W: Write>(
+    entries: &[CrapEntry],
+    threshold: f64,
+    out: &mut W,
+) -> Result<()> {
     if entries.is_empty() {
         writeln!(out, "No functions found.")?;
         return Ok(());
@@ -105,7 +185,10 @@ fn render_human<W: Write>(entries: &[CrapEntry], threshold: f64, out: &mut W) ->
 }
 
 /// Build the full comfy-table for a slice of entries.
-fn build_table(entries: &[CrapEntry], threshold: f64) -> Table {
+fn build_table(
+    entries: &[CrapEntry],
+    threshold: f64,
+) -> Table {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
     table.set_header(vec![
@@ -117,8 +200,14 @@ fn build_table(entries: &[CrapEntry], threshold: f64) -> Table {
         Cell::new("Location").add_attribute(Attribute::Bold),
     ]);
     // Numeric columns read more naturally when right-aligned.
-    table.column_mut(1).unwrap().set_cell_alignment(CellAlignment::Right);
-    table.column_mut(2).unwrap().set_cell_alignment(CellAlignment::Right);
+    table
+        .column_mut(1)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Right);
+    table
+        .column_mut(2)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Right);
     for entry in entries {
         table.add_row(build_row(entry, threshold));
     }
@@ -126,7 +215,10 @@ fn build_table(entries: &[CrapEntry], threshold: f64) -> Table {
 }
 
 /// Build one table row for a single entry.
-fn build_row(entry: &CrapEntry, threshold: f64) -> Vec<Cell> {
+fn build_row(
+    entry: &CrapEntry,
+    threshold: f64,
+) -> Vec<Cell> {
     let grade = Grade::of(entry.crap, threshold);
     let color = grade.color();
     vec![
@@ -140,7 +232,12 @@ fn build_row(entry: &CrapEntry, threshold: f64) -> Vec<Cell> {
 }
 
 /// Write the one-line summary (✓ or ✗) after the table.
-fn write_summary<W: Write>(out: &mut W, crappy: usize, total: usize, threshold: f64) -> Result<()> {
+fn write_summary<W: Write>(
+    out: &mut W,
+    crappy: usize,
+    total: usize,
+    threshold: f64,
+) -> Result<()> {
     if crappy == 0 {
         writeln!(
             out,
@@ -164,7 +261,10 @@ fn write_summary<W: Write>(out: &mut W, crappy: usize, total: usize, threshold: 
 
 /// How many entries exceed the threshold — used by the CLI to decide the
 /// process exit code.
-pub fn crappy_count(entries: &[CrapEntry], threshold: f64) -> usize {
+pub fn crappy_count(
+    entries: &[CrapEntry],
+    threshold: f64,
+) -> usize {
     entries
         .iter()
         .filter(|e| Severity::classify(e.crap, threshold) == Severity::Crappy)
@@ -254,10 +354,7 @@ mod tests {
         let mut buf = Vec::new();
         render(&sample(), 30.0, Format::Human, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(
-            s.contains('✗'),
-            "output must show ✗ for crappy functions"
-        );
+        assert!(s.contains('✗'), "output must show ✗ for crappy functions");
         assert!(s.contains("1/2"), "summary must report 1 out of 2 crappy");
     }
 
@@ -385,10 +482,26 @@ mod tests {
         //   Crappy:   score > 30
         //
         // Kills: > replaced with >=, wrong divisor, tiers swapped.
-        assert_eq!(Grade::of(10.0,   30.0).icon(), "✓", "exactly threshold/3 → Clean");
-        assert_eq!(Grade::of(10.001, 30.0).icon(), "▲", "just above threshold/3 → Moderate");
-        assert_eq!(Grade::of(30.0,   30.0).icon(), "▲", "exactly threshold → Moderate (not Crappy)");
-        assert_eq!(Grade::of(30.001, 30.0).icon(), "✗", "just above threshold → Crappy");
+        assert_eq!(
+            Grade::of(10.0, 30.0).icon(),
+            "✓",
+            "exactly threshold/3 → Clean"
+        );
+        assert_eq!(
+            Grade::of(10.001, 30.0).icon(),
+            "▲",
+            "just above threshold/3 → Moderate"
+        );
+        assert_eq!(
+            Grade::of(30.0, 30.0).icon(),
+            "▲",
+            "exactly threshold → Moderate (not Crappy)"
+        );
+        assert_eq!(
+            Grade::of(30.001, 30.0).icon(),
+            "✗",
+            "just above threshold → Crappy"
+        );
     }
 
     #[test]
@@ -409,5 +522,91 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains('▲'), "moderate score must show ▲");
         assert!(!s.contains('✗'), "moderate score must not show ✗");
+    }
+
+    // --- GitHub annotation format ---
+
+    #[test]
+    fn github_format_emits_warning_for_crappy_function() {
+        // Kills: missing the crappy-only guard (`entry.crap > threshold`).
+        let mut buf = Vec::new();
+        render(&sample(), 30.0, Format::GitHub, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("::warning"),
+            "crappy function must produce a ::warning annotation"
+        );
+        // The annotation must name the function that is crappy.
+        assert!(
+            s.contains("crappy"),
+            "annotation must mention the crappy function"
+        );
+    }
+
+    #[test]
+    fn github_format_clean_function_produces_no_annotation() {
+        // Kills: emitting annotations for all functions regardless of threshold.
+        let mut buf = Vec::new();
+        render(&sample(), 30.0, Format::GitHub, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        // "clean" (crap=1.0) is well below threshold=30 and must be silent.
+        assert!(
+            !s.lines()
+                .any(|l| l.contains("clean") && l.contains("::warning")),
+            "clean function must not produce an annotation"
+        );
+    }
+
+    #[test]
+    fn github_format_all_clean_produces_empty_output() {
+        // Kills: unconditionally writing output regardless of score.
+        let all_clean = vec![CrapEntry {
+            file: PathBuf::from("a.rs"),
+            function: "clean".into(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap: 1.0,
+        }];
+        let mut buf = Vec::new();
+        render(&all_clean, 30.0, Format::GitHub, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.is_empty(),
+            "no crappy functions must produce no output, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn github_format_annotation_contains_file_and_line() {
+        // Pins: the file= and line= parameters are present and non-empty.
+        let entries = vec![CrapEntry {
+            file: PathBuf::from("src/lib.rs"),
+            function: "bad".into(),
+            line: 42,
+            cyclomatic: 10.0,
+            coverage: Some(0.0),
+            crap: 110.0,
+        }];
+        let mut buf = Vec::new();
+        render(&entries, 30.0, Format::GitHub, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("line=42"),
+            "annotation must include the line number"
+        );
+        assert!(
+            s.contains("lib.rs"),
+            "annotation must include the file name"
+        );
+    }
+
+    #[test]
+    fn gha_escape_encodes_special_characters() {
+        // Pins: special chars that would break workflow-command parsing.
+        assert_eq!(gha_escape("a%b"), "a%25b");
+        assert_eq!(gha_escape("a\rb"), "a%0Db");
+        assert_eq!(gha_escape("a\nb"), "a%0Ab");
+        assert_eq!(gha_escape("plain"), "plain"); // no-op for clean strings
     }
 }

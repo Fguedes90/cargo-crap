@@ -44,7 +44,11 @@ impl FileCoverage {
     /// composed entirely of declarative code (`fn sig() -> Type;`, unreachable
     /// macro expansions, etc.) genuinely has nothing to cover and should not
     /// be penalized.
-    pub fn coverage_in_span(&self, start: usize, end: usize) -> f64 {
+    pub fn coverage_in_span(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> f64 {
         let start = start as u32;
         let end = end as u32;
         let executable: Vec<_> = self.lines.range(start..=end).collect();
@@ -76,7 +80,7 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
             Record::SourceFile { path: sf_path } => {
                 current_path = Some(sf_path.clone());
                 files.entry(sf_path).or_default();
-            }
+            },
             Record::LineData { line, count, .. } => {
                 if let Some(ref p) = current_path {
                     if let Some(fc) = files.get_mut(p) {
@@ -85,11 +89,11 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
                         *fc.lines.entry(line).or_insert(0) += count;
                     }
                 }
-            }
+            },
             Record::EndOfRecord => {
                 current_path = None;
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 

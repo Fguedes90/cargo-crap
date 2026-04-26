@@ -8,7 +8,7 @@
 
 use cargo_crap::complexity;
 use cargo_crap::coverage;
-use cargo_crap::merge::{merge, MissingCoveragePolicy};
+use cargo_crap::merge::{MissingCoveragePolicy, merge};
 use std::path::PathBuf;
 
 fn fixture_root() -> PathBuf {
@@ -20,7 +20,8 @@ fn end_to_end_pipeline_produces_ranked_scores() {
     let root = fixture_root();
 
     // 1. Complexity pass over the fixture crate.
-    let complexity = complexity::analyze_tree(&root.join("src")).expect("analyze_tree");
+    let complexity =
+        complexity::analyze_tree(&root.join("src"), &[] as &[&str]).expect("analyze_tree");
     let names: Vec<_> = complexity.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"trivial"), "trivial fn not found");
     assert!(names.contains(&"moderate"), "moderate fn not found");
@@ -91,7 +92,8 @@ fn json_output_round_trips() {
     // get invalid JSON, even with floats like CRAP scores that could
     // otherwise serialize as NaN.
     let root = fixture_root();
-    let complexity = complexity::analyze_tree(&root.join("src")).expect("analyze_tree");
+    let complexity =
+        complexity::analyze_tree(&root.join("src"), &[] as &[&str]).expect("analyze_tree");
     let coverage = coverage::parse_lcov(&root.join("lcov.info")).expect("parse_lcov");
     let entries = merge(complexity, coverage, MissingCoveragePolicy::Pessimistic);
 

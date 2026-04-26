@@ -3,7 +3,7 @@
 //!
 //! ## The path-matching problem
 //!
-//! This is where the silent failure mode lives. `rust-code-analysis` gives
+//! This is where the silent failure mode lives. The complexity pass gives
 //! us absolute paths (whatever was passed to `analyze_tree`). LCOV files
 //! can contain:
 //!
@@ -26,7 +26,7 @@
 use crate::complexity::FunctionComplexity;
 use crate::coverage::FileCoverage;
 use crate::score::crap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -45,7 +45,8 @@ pub struct CrapEntry {
 }
 
 /// How to treat functions we have complexity data for but no coverage data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum MissingCoveragePolicy {
     /// Assume 0% coverage. Pessimistic — good for CI gates, where unmapped
     /// files are a red flag worth surfacing.
@@ -131,13 +132,13 @@ impl<'a> PathIndex<'a> {
                 match raw_path.canonicalize() {
                     Ok(abs) => {
                         by_absolute.insert(abs, cov);
-                    }
+                    },
                     Err(_) => {
                         // Absolute but non-existent (e.g., coverage was
                         // produced in a container at a different path).
                         // Fall back to suffix matching.
                         by_relative.push((raw_path.clone(), cov));
-                    }
+                    },
                 }
             } else {
                 by_relative.push((raw_path.clone(), cov));
@@ -150,7 +151,10 @@ impl<'a> PathIndex<'a> {
         }
     }
 
-    fn lookup(&self, query: &Path) -> Option<&'a FileCoverage> {
+    fn lookup(
+        &self,
+        query: &Path,
+    ) -> Option<&'a FileCoverage> {
         // Fast path: direct canonical match.
         if let Ok(abs) = query.canonicalize() {
             if let Some(cov) = self.by_absolute.get(&abs) {
@@ -176,7 +180,10 @@ impl<'a> PathIndex<'a> {
 /// This is stricter than a byte-level `ends_with`: `foo/bar.rs` must not
 /// match `oofoo/bar.rs`. Cross-platform separators are handled because
 /// `Path::components` normalizes them.
-fn path_has_suffix(haystack: &Path, needle: &Path) -> bool {
+fn path_has_suffix(
+    haystack: &Path,
+    needle: &Path,
+) -> bool {
     let hay: Vec<_> = haystack.components().collect();
     let nee: Vec<_> = needle.components().collect();
     if nee.len() > hay.len() {

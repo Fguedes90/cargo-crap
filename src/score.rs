@@ -40,7 +40,10 @@ pub const DEFAULT_THRESHOLD: f64 = 30.0;
 /// assert_eq!(crap(1.0, 100.0), 1.0);          // trivial, tested
 /// assert_eq!(crap(6.0, 0.0), 42.0);           // moderately complex, untested
 /// ```
-pub fn crap(complexity: f64, coverage_pct: f64) -> f64 {
+pub fn crap(
+    complexity: f64,
+    coverage_pct: f64,
+) -> f64 {
     let uncovered = 1.0 - (coverage_pct.clamp(0.0, 100.0) / 100.0);
     complexity.powi(2) * uncovered.powi(3) + complexity
 }
@@ -55,7 +58,10 @@ pub enum Severity {
 }
 
 impl Severity {
-    pub fn classify(score: f64, threshold: f64) -> Self {
+    pub fn classify(
+        score: f64,
+        threshold: f64,
+    ) -> Self {
         if score > threshold {
             Self::Crappy
         } else {

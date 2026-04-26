@@ -7,11 +7,13 @@
 //! line — the span has to come from the AST.
 
 use anyhow::{Context, Result};
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use rayon::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use syn::{
+    BinOp, ImplItemFn, ItemFn, ItemImpl,
     visit::{self, Visit},
-    BinOp, ImplItemFn, ItemFn,
 };
 
 /// One function's complexity, with enough location info to join against a
@@ -44,19 +46,64 @@ pub fn analyze_file(path: &Path) -> Result<Vec<FunctionComplexity>> {
     let mut visitor = FunctionVisitor {
         file: path,
         out: Vec::new(),
+        impl_type: None,
     };
     visitor.visit_file(&syntax);
     Ok(visitor.out)
+}
+
+/// Returns `true` if `attrs` contains an attribute with the given simple name,
+/// e.g. `has_attr(attrs, "test")` matches `#[test]`.
+fn has_attr(
+    attrs: &[syn::Attribute],
+    name: &str,
+) -> bool {
+    attrs.iter().any(|a| a.path().is_ident(name))
+}
+
+/// Returns `true` if `attrs` contains `#[cfg(test)]` exactly.
+///
+/// More complex forms (`#[cfg(not(test))]`, `#[cfg(any(test, ...))]`) are not
+/// matched — we only skip the common, unambiguous case.
+fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|a| {
+        a.path().is_ident("cfg")
+            && a.parse_args::<syn::Ident>()
+                .map(|id| id == "test")
+                .unwrap_or(false)
+    })
+}
+
+/// Extract a simple type name from an `impl` self-type for use as a prefix.
+///
+/// `impl Foo` and `impl Trait for Foo` both yield `Some("Foo")`.
+/// Exotic cases like `impl dyn Trait` yield `None`.
+fn impl_type_name(ty: &syn::Type) -> Option<String> {
+    if let syn::Type::Path(tp) = ty {
+        tp.path.segments.last().map(|s| s.ident.to_string())
+    } else {
+        None
+    }
 }
 
 /// syn visitor that collects one [`FunctionComplexity`] per function item.
 struct FunctionVisitor<'a> {
     file: &'a Path,
     out: Vec<FunctionComplexity>,
+    /// Type name of the enclosing `impl` block, if any.
+    impl_type: Option<String>,
 }
 
 impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
-    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+    fn visit_item_fn(
+        &mut self,
+        node: &'ast ItemFn,
+    ) {
+        // Skip test functions — they are never in LCOV output and would
+        // always score as 0% covered, producing misleading CRAP scores.
+        if has_attr(&node.attrs, "test") {
+            return;
+        }
         let name = node.sig.ident.to_string();
         let start_line = node.sig.fn_token.span.start().line;
         let end_line = node.block.brace_token.span.close().end().line;
@@ -71,8 +118,30 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
         // Do NOT recurse: skip nested fn items inside function bodies.
     }
 
-    fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
-        let name = node.sig.ident.to_string();
+    fn visit_item_impl(
+        &mut self,
+        node: &'ast ItemImpl,
+    ) {
+        // Set the self-type for the duration of this impl block so that
+        // visit_impl_item_fn can prefix method names with it.
+        let prev = self.impl_type.take();
+        self.impl_type = impl_type_name(&node.self_ty);
+        visit::visit_item_impl(self, node);
+        self.impl_type = prev;
+    }
+
+    fn visit_impl_item_fn(
+        &mut self,
+        node: &'ast ImplItemFn,
+    ) {
+        if has_attr(&node.attrs, "test") {
+            return;
+        }
+        let method = node.sig.ident.to_string();
+        let name = match &self.impl_type {
+            Some(ty) => format!("{ty}::{method}"),
+            None => method,
+        };
         let start_line = node.sig.fn_token.span.start().line;
         let end_line = node.block.brace_token.span.close().end().line;
         let cyclomatic = count_cyclomatic(&node.block) as f64;
@@ -83,6 +152,17 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
             end_line,
             cyclomatic,
         });
+    }
+
+    fn visit_item_mod(
+        &mut self,
+        node: &'ast syn::ItemMod,
+    ) {
+        // Skip the entire #[cfg(test)] module — functions inside it will
+        // never appear in coverage reports and would all score pessimistically.
+        if !is_cfg_test(&node.attrs) {
+            visit::visit_item_mod(self, node);
+        }
     }
 }
 
@@ -101,82 +181,146 @@ struct CcCounter {
 }
 
 impl<'ast> Visit<'ast> for CcCounter {
-    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+    fn visit_expr_if(
+        &mut self,
+        node: &'ast syn::ExprIf,
+    ) {
         self.count += 1;
         visit::visit_expr_if(self, node); // recurse to catch else-if chains
     }
 
-    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+    fn visit_expr_for_loop(
+        &mut self,
+        node: &'ast syn::ExprForLoop,
+    ) {
         self.count += 1;
         visit::visit_expr_for_loop(self, node);
     }
 
-    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+    fn visit_expr_while(
+        &mut self,
+        node: &'ast syn::ExprWhile,
+    ) {
         self.count += 1;
         visit::visit_expr_while(self, node);
     }
 
-    fn visit_expr_loop(&mut self, node: &'ast syn::ExprLoop) {
+    fn visit_expr_loop(
+        &mut self,
+        node: &'ast syn::ExprLoop,
+    ) {
         self.count += 1;
         visit::visit_expr_loop(self, node);
     }
 
-    fn visit_arm(&mut self, node: &'ast syn::Arm) {
+    fn visit_arm(
+        &mut self,
+        node: &'ast syn::Arm,
+    ) {
         self.count += 1;
         visit::visit_arm(self, node);
     }
 
-    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
+    fn visit_expr_binary(
+        &mut self,
+        node: &'ast syn::ExprBinary,
+    ) {
         if matches!(node.op, BinOp::And(_) | BinOp::Or(_)) {
             self.count += 1;
         }
         visit::visit_expr_binary(self, node);
     }
 
-    fn visit_expr_try(&mut self, node: &'ast syn::ExprTry) {
+    fn visit_expr_try(
+        &mut self,
+        node: &'ast syn::ExprTry,
+    ) {
         self.count += 1;
         visit::visit_expr_try(self, node);
     }
 
-    fn visit_expr_closure(&mut self, _node: &'ast syn::ExprClosure) {
+    fn visit_expr_closure(
+        &mut self,
+        _node: &'ast syn::ExprClosure,
+    ) {
         // Do not recurse into closures: their decision points belong to their
         // own logical scope, not to the enclosing function's CC.
     }
 }
 
+/// Build a `GlobSet` from a slice of glob pattern strings.
+fn build_exclude_set<S: AsRef<str>>(patterns: &[S]) -> Result<GlobSet> {
+    let mut builder = GlobSetBuilder::new();
+    for pat in patterns {
+        let glob = GlobBuilder::new(pat.as_ref())
+            .literal_separator(true) // `*` stays within one component; `**` crosses
+            .build()
+            .with_context(|| format!("invalid exclude pattern: {:?}", pat.as_ref()))?;
+        builder.add(glob);
+    }
+    builder.build().context("building exclude glob set")
+}
+
 /// Walk a directory tree and analyze every `.rs` file, honoring `.gitignore`.
+///
+/// `excludes` is a list of glob patterns (relative to `root`) for paths that
+/// should be skipped. Use `**` to cross directory boundaries:
+/// `"tests/**"` excludes all files under `tests/`.
 ///
 /// Files that fail to parse are logged to stderr but do not abort the whole
 /// run — one corrupt file in a 10k-file workspace shouldn't break CI.
-pub fn analyze_tree(root: &Path) -> Result<Vec<FunctionComplexity>> {
-    let mut all = Vec::new();
-    let walker = ignore::WalkBuilder::new(root)
-        .standard_filters(true)
-        .build();
+pub fn analyze_tree<S: AsRef<str>>(
+    root: &Path,
+    excludes: &[S],
+) -> Result<Vec<FunctionComplexity>> {
+    let exclude_set = build_exclude_set(excludes)?;
 
-    for entry in walker {
-        let entry = match entry {
-            Ok(e) => e,
+    // Phase 1: collect eligible paths (single-threaded walk — the filesystem
+    // is inherently sequential and the ignore crate is not Send).
+    let paths: Vec<PathBuf> = {
+        let walker = ignore::WalkBuilder::new(root)
+            .standard_filters(true)
+            .build();
+
+        walker
+            .filter_map(|result| {
+                let entry = match result {
+                    Ok(e) => e,
+                    Err(err) => {
+                        eprintln!("warning: walk error: {err}");
+                        return None;
+                    },
+                };
+                if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    return None;
+                }
+                if entry.path().extension().and_then(|e| e.to_str()) != Some("rs") {
+                    return None;
+                }
+                if !exclude_set.is_empty() {
+                    if let Ok(rel) = entry.path().strip_prefix(root) {
+                        if exclude_set.is_match(rel) {
+                            return None;
+                        }
+                    }
+                }
+                Some(entry.path().to_path_buf())
+            })
+            .collect()
+    };
+
+    // Phase 2: analyze files in parallel. Each file is independent so rayon
+    // can schedule them across all available cores with no synchronization.
+    let all: Vec<FunctionComplexity> = paths
+        .par_iter()
+        .flat_map_iter(|path| match analyze_file(path) {
+            Ok(fns) => fns,
             Err(err) => {
-                eprintln!("warning: walk error: {err}");
-                continue;
-            }
-        };
-        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            continue;
-        }
-        if entry.path().extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
-
-        match analyze_file(entry.path()) {
-            Ok(mut fns) => all.append(&mut fns),
-            Err(err) => eprintln!(
-                "warning: could not analyze {}: {err}",
-                entry.path().display()
-            ),
-        }
-    }
+                eprintln!("warning: could not analyze {}: {err}", path.display());
+                vec![]
+            },
+        })
+        .collect();
 
     Ok(all)
 }
@@ -343,13 +487,140 @@ impl Foo {
         );
         let fns = analyze_file(f.path()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
-        assert!(names.contains(&"bar"), "expected bar, got {names:?}");
-        assert!(names.contains(&"baz"), "expected baz, got {names:?}");
-        let baz = fns.iter().find(|f| f.name == "baz").unwrap();
+        assert!(
+            names.contains(&"Foo::bar"),
+            "expected Foo::bar, got {names:?}"
+        );
+        assert!(
+            names.contains(&"Foo::baz"),
+            "expected Foo::baz, got {names:?}"
+        );
+        let baz = fns.iter().find(|f| f.name == "Foo::baz").unwrap();
         assert!(
             baz.cyclomatic >= 2.0,
             "baz should have CC >= 2, got {}",
             baz.cyclomatic
         );
+    }
+
+    // --- #[test] / #[cfg(test)] filtering ---
+
+    #[test]
+    fn test_functions_are_excluded() {
+        // Kills: removing the `has_attr(&node.attrs, "test")` early return.
+        let f = write_temp(
+            r#"
+fn real() -> i32 { 42 }
+
+#[test]
+fn test_real() {
+    assert_eq!(real(), 42);
+}
+"#,
+        );
+        let fns = analyze_file(f.path()).expect("analyze");
+        let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
+        assert!(names.contains(&"real"), "production fn must be present");
+        assert!(
+            !names.contains(&"test_real"),
+            "#[test] fn must be excluded, got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn cfg_test_module_is_fully_excluded() {
+        // Kills: removing the visit_item_mod override (all three functions
+        // inside the module would otherwise appear).
+        let f = write_temp(
+            r#"
+fn real() -> i32 { 42 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn helper(x: i32) -> i32 { x + 1 }
+
+    #[test]
+    fn test_real() {
+        assert_eq!(real(), 42);
+    }
+}
+"#,
+        );
+        let fns = analyze_file(f.path()).expect("analyze");
+        let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
+        assert!(names.contains(&"real"), "production fn must be present");
+        assert!(
+            !names.contains(&"helper"),
+            "fn inside #[cfg(test)] mod must be excluded, got: {names:?}"
+        );
+        assert!(
+            !names.contains(&"test_real"),
+            "#[test] fn inside #[cfg(test)] mod must be excluded, got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn only_test_attribute_is_filtered_not_other_attributes() {
+        // A fn with an unrelated attribute (#[allow(...)]) must NOT be excluded.
+        let f = write_temp(
+            r#"
+#[allow(dead_code)]
+fn allowed() -> i32 { 42 }
+"#,
+        );
+        let fns = analyze_file(f.path()).expect("analyze");
+        let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
+        assert!(
+            names.contains(&"allowed"),
+            "#[allow(...)] fn must not be excluded, got: {names:?}"
+        );
+    }
+
+    // --- --exclude glob patterns ---
+
+    #[test]
+    fn analyze_tree_excludes_matching_files() {
+        use std::fs;
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        // File that should be kept.
+        let src = dir.path().join("src");
+        fs::create_dir(&src).expect("mkdir src");
+        fs::write(src.join("lib.rs"), "fn kept() -> i32 { 42 }").expect("write lib.rs");
+
+        // File that should be excluded by the glob.
+        let generated = dir.path().join("generated");
+        fs::create_dir(&generated).expect("mkdir generated");
+        fs::write(generated.join("proto.rs"), "fn excluded() -> i32 { 1 }")
+            .expect("write proto.rs");
+
+        let results = analyze_tree(dir.path(), &["generated/**"]).expect("analyze_tree");
+        let names: Vec<_> = results.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"kept"), "src/lib.rs fn must appear");
+        assert!(
+            !names.contains(&"excluded"),
+            "generated/proto.rs fn must be excluded, got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn analyze_tree_with_empty_excludes_keeps_all_files() {
+        // Kills: accidentally filtering everything when excludes is empty.
+        use std::fs;
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join("lib.rs"), "fn foo() -> i32 { 1 }").expect("write");
+
+        let results = analyze_tree(dir.path(), &[] as &[&str]).expect("analyze_tree");
+        assert!(!results.is_empty(), "no excludes must keep all files");
+    }
+
+    #[test]
+    fn invalid_exclude_pattern_returns_error() {
+        // Kills: silently ignoring invalid patterns.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let result = analyze_tree(dir.path(), &["[invalid"]);
+        assert!(result.is_err(), "invalid glob must return an error");
     }
 }

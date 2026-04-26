@@ -20,6 +20,7 @@
 //! - [`report`] — human / JSON rendering.
 
 pub mod complexity;
+pub mod config;
 pub mod coverage;
 pub mod merge;
 pub mod report;
