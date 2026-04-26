@@ -154,11 +154,9 @@ jobs:
 
 ## Prior art and references
 
-- Savoia, A. & Evans, B. (2007). *The CRAP Metric.*
+- [Savoia, A. & Evans, B. (2007)](https://dx42.github.io/gmetrics/metrics/CrapMetric.html). *The CRAP Metric.*
 - [Crap4j](http://www.crap4j.org/) — the original Java implementation.
-- NDepend — includes CRAP for .NET.
-- [syn](https://github.com/dtolnay/syn) — the Rust AST library used for
-  parsing and complexity analysis.
+- [syn](https://github.com/dtolnay/syn) — the Rust AST library used for parsing and complexity analysis.
 
 ## License
 
