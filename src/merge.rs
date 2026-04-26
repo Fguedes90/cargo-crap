@@ -69,9 +69,9 @@ pub fn merge(
     let mut entries: Vec<CrapEntry> = complexity
         .into_iter()
         .filter_map(|fc| {
-            let cov = index.lookup(&fc.file).map(|cov_file| {
-                cov_file.coverage_in_span(fc.start_line, fc.end_line)
-            });
+            let cov = index
+                .lookup(&fc.file)
+                .map(|cov_file| cov_file.coverage_in_span(fc.start_line, fc.end_line));
 
             let cov_for_scoring = match (cov, policy) {
                 (Some(c), _) => c,
@@ -92,7 +92,11 @@ pub fn merge(
         })
         .collect();
 
-    entries.sort_by(|a, b| b.crap.partial_cmp(&a.crap).unwrap_or(std::cmp::Ordering::Equal));
+    entries.sort_by(|a, b| {
+        b.crap
+            .partial_cmp(&a.crap)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     entries
 }
 
@@ -216,6 +220,26 @@ mod tests {
     }
 
     #[test]
+    fn equal_length_paths_match_when_identical() {
+        // Kills: replace > with == and > with >= in the nee.len() > hay.len() guard.
+        // If the guard fired for equal-length paths, identical paths would return false.
+        let a = PathBuf::from("/project/src/foo.rs");
+        let b = PathBuf::from("/project/src/foo.rs");
+        assert!(
+            path_has_suffix(&a, &b),
+            "identical paths must match as a suffix"
+        );
+    }
+
+    #[test]
+    fn longer_needle_does_not_match() {
+        // Needle longer than haystack must always return false.
+        let hay = PathBuf::from("src/foo.rs");
+        let needle = PathBuf::from("/abs/project/src/foo.rs");
+        assert!(!path_has_suffix(&hay, &needle));
+    }
+
+    #[test]
     fn merge_sorts_by_descending_crap() {
         let complexity = vec![
             FunctionComplexity {
@@ -233,7 +257,11 @@ mod tests {
                 cyclomatic: 10.0,
             },
         ];
-        let entries = merge(complexity, HashMap::new(), MissingCoveragePolicy::Pessimistic);
+        let entries = merge(
+            complexity,
+            HashMap::new(),
+            MissingCoveragePolicy::Pessimistic,
+        );
         assert_eq!(entries[0].function, "hard");
         assert_eq!(entries[1].function, "easy");
     }

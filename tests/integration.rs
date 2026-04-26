@@ -39,10 +39,8 @@ fn end_to_end_pipeline_produces_ranked_scores() {
     assert!(!entries.is_empty(), "merge produced no entries");
 
     // 4. Verify ordering: crappy must outrank moderate must outrank trivial.
-    let by_name: std::collections::HashMap<_, _> = entries
-        .iter()
-        .map(|e| (e.function.as_str(), e))
-        .collect();
+    let by_name: std::collections::HashMap<_, _> =
+        entries.iter().map(|e| (e.function.as_str(), e)).collect();
     let trivial = by_name.get("trivial").expect("trivial in results");
     let moderate = by_name.get("moderate").expect("moderate in results");
     let crappy = by_name.get("crappy").expect("crappy in results");

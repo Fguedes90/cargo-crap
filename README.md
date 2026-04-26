@@ -58,16 +58,16 @@ Example output:
 
 ## Flags
 
-| Flag | Default | Purpose |
-|---|---|---|
-| `--lcov <FILE>` | — | LCOV file from `cargo llvm-cov` or `cargo tarpaulin`. |
-| `--path <DIR>` | `.` | Root to walk for `.rs` files (respects `.gitignore`). |
-| `--threshold <N>` | `30` | Score above which a function is flagged. |
-| `--min <SCORE>` | — | Hide entries below this score. |
-| `--top <N>` | — | Show only the N worst offenders. |
-| `--missing {pessimistic,optimistic,skip}` | `pessimistic` | How to score a function with no coverage data. |
-| `--format {human,json}` | `human` | Output format. |
-| `--fail-above` | off | Exit 1 if any function exceeds `--threshold`. |
+| Flag                                      | Default       | Purpose                                               |
+| ----------------------------------------- | ------------- | ----------------------------------------------------- |
+| `--lcov <FILE>`                           | —             | LCOV file from `cargo llvm-cov` or `cargo tarpaulin`. |
+| `--path <DIR>`                            | `.`           | Root to walk for `.rs` files (respects `.gitignore`). |
+| `--threshold <N>`                         | `30`          | Score above which a function is flagged.              |
+| `--min <SCORE>`                           | —             | Hide entries below this score.                        |
+| `--top <N>`                               | —             | Show only the N worst offenders.                      |
+| `--missing {pessimistic,optimistic,skip}` | `pessimistic` | How to score a function with no coverage data.        |
+| `--format {human,json}`                   | `human`       | Output format.                                        |
+| `--fail-above`                            | off           | Exit 1 if any function exceeds `--threshold`.         |
 
 ## Design
 
@@ -75,8 +75,8 @@ The tool has four orthogonal layers. Each is testable in isolation; the
 join between them has its own integration test.
 
 ```
-  cargo llvm-cov           rust-code-analysis
-  (LCOV file)              (tree-sitter AST)
+  cargo llvm-cov                  syn
+  (LCOV file)                 (Rust AST)
         │                         │
         ▼                         ▼
   ┌───────────┐            ┌────────────┐
@@ -157,8 +157,8 @@ jobs:
 - Savoia, A. & Evans, B. (2007). *The CRAP Metric.*
 - [Crap4j](http://www.crap4j.org/) — the original Java implementation.
 - NDepend — includes CRAP for .NET.
-- [rust-code-analysis](https://github.com/mozilla/rust-code-analysis) —
-  provides the AST and complexity metrics under the hood.
+- [syn](https://github.com/dtolnay/syn) — the Rust AST library used for
+  parsing and complexity analysis.
 
 ## License
 

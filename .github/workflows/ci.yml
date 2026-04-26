@@ -42,7 +42,29 @@ jobs:
       - name: clippy
         run: cargo clippy --all-targets -- -D warnings
 
+  msrv:
+    name: MSRV (Rust 1.75)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (MSRV)
+        run: cargo build --all-targets
+      - name: Test (MSRV)
+        run: cargo test --all-targets
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   # Dogfood: run cargo-crap against its own codebase.
+
   # If our own core modules get crappy, we want to know.
   self_score:
     name: Self-score
@@ -59,4 +81,4 @@ jobs:
       - name: Generate coverage
         run: cargo llvm-cov --lcov --output-path lcov.info --workspace
       - name: Run cargo-crap on itself
-        run: cargo run --release -- --lcov lcov.info --threshold 30 --fail-above
+        run: cargo run --release -- --lcov lcov.info --path src --threshold 30 --fail-above

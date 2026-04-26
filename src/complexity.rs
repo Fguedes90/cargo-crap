@@ -1,15 +1,18 @@
 //! Extract cyclomatic complexity per function, with source spans.
 //!
-//! We use [`rust_code_analysis`] for two reasons beyond just getting a CC
-//! number: it gives us the AST-derived line span of every function, and it
-//! handles closures, nested functions, and `impl` methods uniformly via its
-//! `FuncSpace` recursion. LCOV's `FN:line,name` record only gives us the
-//! starting line — the span has to come from somewhere.
+//! We use [`syn`] for two reasons beyond just getting a CC number: it gives
+//! us the typed Rust AST with precise line spans for every function, and it
+//! handles free functions, impl methods, and nested scopes uniformly via its
+//! [`Visit`] trait. LCOV's `FN:line,name` record only gives us the starting
+//! line — the span has to come from the AST.
 
-use anyhow::{anyhow, Context, Result};
-use rust_code_analysis::{metrics, ParserTrait, RustParser, SpaceKind};
+use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use syn::{
+    visit::{self, Visit},
+    BinOp, ImplItemFn, ItemFn,
+};
 
 /// One function's complexity, with enough location info to join against a
 /// coverage report later.
@@ -17,8 +20,7 @@ use std::path::{Path, PathBuf};
 pub struct FunctionComplexity {
     /// Absolute path to the source file.
     pub file: PathBuf,
-    /// Best-effort function name. `None` becomes `"<anonymous>"` because
-    /// closures and some macro-expanded items have no name in the AST.
+    /// Function name. Closures are not extracted as separate entries.
     pub name: String,
     /// 1-indexed first line of the function (inclusive).
     pub start_line: usize,
@@ -34,39 +36,111 @@ pub struct FunctionComplexity {
 /// CRAP is a per-function metric, and rolling up file-level CC into the
 /// formula produces misleading scores on large files.
 pub fn analyze_file(path: &Path) -> Result<Vec<FunctionComplexity>> {
-    let source = std::fs::read(path)
+    let source = std::fs::read_to_string(path)
         .with_context(|| format!("reading source file {}", path.display()))?;
 
-    // `RustParser` is the concrete parser; `metrics()` walks it and returns
-    // a nested `FuncSpace` tree where each node corresponds to a scope
-    // (file, function, closure, impl, ...).
-    let parser = RustParser::new(source, path, None);
-    let root = metrics(&parser, path)
-        .ok_or_else(|| anyhow!("rust-code-analysis failed to parse {}", path.display()))?;
+    let syntax = syn::parse_file(&source).with_context(|| format!("parsing {}", path.display()))?;
 
-    let mut out = Vec::new();
-    walk(&root, path, &mut out);
-    Ok(out)
+    let mut visitor = FunctionVisitor {
+        file: path,
+        out: Vec::new(),
+    };
+    visitor.visit_file(&syntax);
+    Ok(visitor.out)
 }
 
-/// Depth-first walk of the FuncSpace tree, collecting only function-kind
-/// nodes. We skip `SpaceKind::Unit` (the whole file) and `SpaceKind::Impl`
-/// (an `impl` block, whose methods appear as children anyway).
-fn walk(space: &rust_code_analysis::FuncSpace, file: &Path, out: &mut Vec<FunctionComplexity>) {
-    if matches!(space.kind, SpaceKind::Function) {
-        out.push(FunctionComplexity {
-            file: file.to_path_buf(),
-            name: space
-                .name
-                .clone()
-                .unwrap_or_else(|| "<anonymous>".to_string()),
-            start_line: space.start_line,
-            end_line: space.end_line,
-            cyclomatic: space.metrics.cyclomatic.cyclomatic_sum(),
+/// syn visitor that collects one [`FunctionComplexity`] per function item.
+struct FunctionVisitor<'a> {
+    file: &'a Path,
+    out: Vec<FunctionComplexity>,
+}
+
+impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        let name = node.sig.ident.to_string();
+        let start_line = node.sig.fn_token.span.start().line;
+        let end_line = node.block.brace_token.span.close().end().line;
+        let cyclomatic = count_cyclomatic(&node.block) as f64;
+        self.out.push(FunctionComplexity {
+            file: self.file.to_path_buf(),
+            name,
+            start_line,
+            end_line,
+            cyclomatic,
+        });
+        // Do NOT recurse: skip nested fn items inside function bodies.
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
+        let name = node.sig.ident.to_string();
+        let start_line = node.sig.fn_token.span.start().line;
+        let end_line = node.block.brace_token.span.close().end().line;
+        let cyclomatic = count_cyclomatic(&node.block) as f64;
+        self.out.push(FunctionComplexity {
+            file: self.file.to_path_buf(),
+            name,
+            start_line,
+            end_line,
+            cyclomatic,
         });
     }
-    for child in &space.spaces {
-        walk(child, file, out);
+}
+
+/// Compute cyclomatic complexity for a function body.
+///
+/// Base count is 1 (the single straight-line path). Each decision point adds 1.
+fn count_cyclomatic(body: &syn::Block) -> usize {
+    let mut counter = CcCounter { count: 1 };
+    counter.visit_block(body);
+    counter.count
+}
+
+/// Visitor that counts decision points to compute cyclomatic complexity.
+struct CcCounter {
+    count: usize,
+}
+
+impl<'ast> Visit<'ast> for CcCounter {
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        self.count += 1;
+        visit::visit_expr_if(self, node); // recurse to catch else-if chains
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.count += 1;
+        visit::visit_expr_for_loop(self, node);
+    }
+
+    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+        self.count += 1;
+        visit::visit_expr_while(self, node);
+    }
+
+    fn visit_expr_loop(&mut self, node: &'ast syn::ExprLoop) {
+        self.count += 1;
+        visit::visit_expr_loop(self, node);
+    }
+
+    fn visit_arm(&mut self, node: &'ast syn::Arm) {
+        self.count += 1;
+        visit::visit_arm(self, node);
+    }
+
+    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
+        if matches!(node.op, BinOp::And(_) | BinOp::Or(_)) {
+            self.count += 1;
+        }
+        visit::visit_expr_binary(self, node);
+    }
+
+    fn visit_expr_try(&mut self, node: &'ast syn::ExprTry) {
+        self.count += 1;
+        visit::visit_expr_try(self, node);
+    }
+
+    fn visit_expr_closure(&mut self, _node: &'ast syn::ExprClosure) {
+        // Do not recurse into closures: their decision points belong to their
+        // own logical scope, not to the enclosing function's CC.
     }
 }
 
@@ -168,5 +242,114 @@ fn c() {}
         assert!(names.contains(&"a"));
         assert!(names.contains(&"b"));
         assert!(names.contains(&"c"));
+    }
+
+    #[test]
+    fn for_loop_adds_one_to_cc() {
+        // Kills: visit_expr_for_loop replaced with (), += with -=, += with *=
+        let f = write_temp("fn foo(n: i32) -> i32 { let mut s = 0; for _i in 0..n { s += 1; } s }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(
+            fns[0].cyclomatic, 2.0,
+            "for loop must add exactly 1 to base CC"
+        );
+    }
+
+    #[test]
+    fn while_loop_adds_one_to_cc() {
+        // Kills: visit_expr_while replaced with (), += with -=, += with *=
+        let f = write_temp("fn foo(mut n: i32) -> i32 { while n > 0 { n -= 1; } n }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(
+            fns[0].cyclomatic, 2.0,
+            "while loop must add exactly 1 to base CC"
+        );
+    }
+
+    #[test]
+    fn loop_expr_adds_one_to_cc() {
+        // Kills: visit_expr_loop replaced with (), += with -=, += with *=
+        let f = write_temp("fn foo() { loop { break; } }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(fns[0].cyclomatic, 2.0, "loop must add exactly 1 to base CC");
+    }
+
+    #[test]
+    fn match_arms_each_add_one_to_cc() {
+        // Kills: visit_arm replaced with (), += with -=, += with *=
+        let f = write_temp("fn foo(x: u8) -> u8 { match x { 0 => 1, 1 => 2, _ => 3 } }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(fns[0].cyclomatic, 4.0, "3-arm match must add 3 to base CC");
+    }
+
+    #[test]
+    fn logical_and_adds_one_to_cc() {
+        // Kills: visit_expr_binary replaced with (), += with -=, += with *=
+        let f = write_temp("fn foo(a: bool, b: bool) -> bool { a && b }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(fns[0].cyclomatic, 2.0, "&& must add exactly 1 to base CC");
+    }
+
+    #[test]
+    fn logical_or_adds_one_to_cc() {
+        // Kills: visit_expr_binary for || case
+        let f = write_temp("fn foo(a: bool, b: bool) -> bool { a || b }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(fns[0].cyclomatic, 2.0, "|| must add exactly 1 to base CC");
+    }
+
+    #[test]
+    fn bitwise_ops_do_not_increase_cc() {
+        // & and | are not control flow — they must NOT add to CC.
+        let f = write_temp("fn foo(a: u8, b: u8) -> u8 { a & b | a }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(fns[0].cyclomatic, 1.0, "bitwise ops must not affect CC");
+    }
+
+    #[test]
+    fn try_operator_adds_one_to_cc() {
+        // Kills: visit_expr_try replaced with (), += with -=, += with *=
+        let f = write_temp("fn foo() -> Option<i32> { let x: Option<i32> = Some(1); Some(x?) }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(
+            fns[0].cyclomatic, 2.0,
+            "? operator must add exactly 1 to base CC"
+        );
+    }
+
+    #[test]
+    fn closure_decisions_not_counted_in_enclosing_fn() {
+        // A closure with branches must not inflate the outer function's CC.
+        let f = write_temp("fn foo() -> i32 { let f = |x: i32| if x > 0 { x } else { -x }; f(1) }");
+        let fns = analyze_file(f.path()).expect("analyze");
+        assert_eq!(
+            fns[0].cyclomatic, 1.0,
+            "closure branches must not leak into outer CC"
+        );
+    }
+
+    #[test]
+    fn impl_methods_are_found() {
+        let f = write_temp(
+            r#"
+struct Foo;
+impl Foo {
+    fn bar(&self) -> i32 { 1 }
+    fn baz(&self, x: i32) -> i32 {
+        if x > 0 { x } else { -x }
+    }
+}
+"#,
+        );
+        let fns = analyze_file(f.path()).expect("analyze");
+        let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
+        assert!(names.contains(&"bar"), "expected bar, got {names:?}");
+        assert!(names.contains(&"baz"), "expected baz, got {names:?}");
+        let baz = fns.iter().find(|f| f.name == "baz").unwrap();
+        assert!(
+            baz.cyclomatic >= 2.0,
+            "baz should have CC >= 2, got {}",
+            baz.cyclomatic
+        );
     }
 }

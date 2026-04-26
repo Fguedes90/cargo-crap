@@ -64,8 +64,8 @@ impl FileCoverage {
 /// them against the paths [`crate::complexity`] produces — see
 /// [`crate::merge`].
 pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
-    let reader = Reader::open_file(path)
-        .with_context(|| format!("opening LCOV file {}", path.display()))?;
+    let reader =
+        Reader::open_file(path).with_context(|| format!("opening LCOV file {}", path.display()))?;
 
     let mut files: HashMap<PathBuf, FileCoverage> = HashMap::new();
     let mut current_path: Option<PathBuf> = None;
@@ -99,6 +99,90 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::path::Path;
+
+    fn write_lcov(content: &str) -> tempfile::NamedTempFile {
+        let mut f = tempfile::NamedTempFile::new().expect("tempfile");
+        f.write_all(content.as_bytes()).expect("write");
+        f
+    }
+
+    // --- parse_lcov tests (kill missed mutants) ---
+
+    #[test]
+    fn parse_lcov_reads_correct_file_and_hit_counts() {
+        // Kills: replace parse_lcov with dummy Ok(...), delete LineData arm, += with *=
+        let f = write_lcov("TN:\nSF:src/foo.rs\nDA:10,3\nDA:11,0\nend_of_record\n");
+        let result = parse_lcov(f.path()).expect("parse_lcov");
+
+        let cov = result
+            .get(Path::new("src/foo.rs"))
+            .expect("src/foo.rs must be in result");
+        assert_eq!(cov.lines[&10], 3, "line 10 should have 3 hits");
+        assert_eq!(cov.lines[&11], 0, "line 11 should have 0 hits");
+    }
+
+    #[test]
+    fn parse_lcov_accumulates_duplicate_line_entries() {
+        // LCOV can repeat a DA line for different branches on the same line.
+        // Hits must be summed, not overwritten. Kills: += with *=.
+        let f = write_lcov("TN:\nSF:src/foo.rs\nDA:10,2\nDA:10,3\nend_of_record\n");
+        let result = parse_lcov(f.path()).expect("parse_lcov");
+        assert_eq!(
+            result[Path::new("src/foo.rs")].lines[&10],
+            5,
+            "duplicate DA entries must be summed"
+        );
+    }
+
+    #[test]
+    fn parse_lcov_isolates_multiple_source_files() {
+        // Kills: delete EndOfRecord arm (if current_path leaks, lines can bleed).
+        // Lines from src/a.rs must never appear under src/b.rs.
+        let f = write_lcov(
+            "TN:\nSF:src/a.rs\nDA:1,1\nend_of_record\nSF:src/b.rs\nDA:2,4\nend_of_record\n",
+        );
+        let result = parse_lcov(f.path()).expect("parse_lcov");
+
+        let a = result.get(Path::new("src/a.rs")).expect("a.rs in result");
+        let b = result.get(Path::new("src/b.rs")).expect("b.rs in result");
+
+        assert_eq!(a.lines[&1], 1);
+        assert_eq!(b.lines[&2], 4);
+        assert!(
+            !b.lines.contains_key(&1),
+            "line 1 from a.rs must not bleed into b.rs"
+        );
+        assert!(
+            !a.lines.contains_key(&2),
+            "line 2 from b.rs must not bleed into a.rs"
+        );
+    }
+
+    #[test]
+    fn stray_da_after_end_of_record_is_not_attributed_to_previous_file() {
+        // Kills: delete match arm Record::EndOfRecord in parse_lcov.
+        // If EndOfRecord does not clear current_path, a stray DA line between
+        // records would be attributed to the previous file.
+        let f = write_lcov(concat!(
+            "TN:\n",
+            "SF:src/a.rs\n",
+            "DA:1,1\n",
+            "end_of_record\n",
+            "DA:99,99\n", // stray line — must be silently dropped
+            "SF:src/b.rs\n",
+            "DA:2,4\n",
+            "end_of_record\n",
+        ));
+        let result = parse_lcov(f.path()).expect("parse_lcov");
+
+        let a = result.get(Path::new("src/a.rs")).expect("a.rs in result");
+        assert!(
+            !a.lines.contains_key(&99),
+            "stray DA:99,99 must not bleed into src/a.rs (EndOfRecord not resetting current_path)"
+        );
+    }
 
     fn fc_from(lines: &[(u32, u64)]) -> FileCoverage {
         FileCoverage {

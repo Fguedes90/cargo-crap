@@ -13,7 +13,7 @@
 //! in isolation:
 //!
 //! - [`score`] — the formula itself and the threshold classifier.
-//! - [`complexity`] — a wrapper over `rust-code-analysis` that produces
+//! - [`complexity`] — uses `syn` to walk the Rust AST and produce
 //!   `(file, function, span, CC)` tuples.
 //! - [`coverage`] — an LCOV parser that produces `(file, line) → hits`.
 //! - [`merge`] — the join between the two, including path normalization.

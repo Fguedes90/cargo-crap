@@ -36,14 +36,14 @@ cargo run --release -- --lcov lcov.info --threshold 30 --fail-above
 The tool has four orthogonal modules that feed into a pipeline:
 
 ```
-rust-code-analysis (tree-sitter AST)    LCOV file (cargo llvm-cov / tarpaulin)
+syn (Rust AST)                          LCOV file (cargo llvm-cov / tarpaulin)
          │                                        │
          ▼                                        ▼
   src/complexity.rs                      src/coverage.rs
   FunctionComplexity {                   HashMap<PathBuf, FileCoverage>
     file, name, start_line,              FileCoverage { lines: BTreeMap<u32, u64> }
     end_line, cyclomatic }
-         │                                        │
+         │                                      │
          └──────────────┬───────────────────────┘
                         ▼
                   src/merge.rs           ← path normalization lives here
@@ -56,7 +56,7 @@ rust-code-analysis (tree-sitter AST)    LCOV file (cargo llvm-cov / tarpaulin)
 
 **`src/score.rs`** — Pure formula: `CRAP(m) = comp(m)² × (1 − cov(m)/100)³ + comp(m)`. No I/O, no dependencies on other modules.
 
-**`src/complexity.rs`** — Wraps `rust-code-analysis` to walk a directory tree (`analyze_tree`) or a single file (`analyze_file`) and extract `FunctionComplexity` tuples. Uses `ignore` crate to respect `.gitignore`. Only `SpaceKind::Function` nodes are collected; file-level and impl-level nodes are skipped.
+**`src/complexity.rs`** — Uses `syn` to walk the Rust AST and extract `FunctionComplexity` tuples. Handles `ItemFn` (free functions) and `ImplItemFn` (methods) via the `Visit` trait. Closures are not recursed into — their decision points belong to their own scope. Uses the `ignore` crate to respect `.gitignore` during `analyze_tree`. The `proc-macro2` dependency must have the `span-locations` feature enabled to call `Span::start()`/`Span::end()` at runtime.
 
 **`src/coverage.rs`** — Parses LCOV files using the `lcov` crate. Only consumes `SF` (source file), `DA` (line data), and `end_of_record` records. Path normalization is deliberately absent here — that responsibility belongs to `merge`.
 
@@ -76,5 +76,6 @@ rust-code-analysis (tree-sitter AST)    LCOV file (cargo llvm-cov / tarpaulin)
 ## Tests
 
 - Unit tests live in each module (`#[cfg(test)]` blocks in `src/*.rs`).
+- CLI integration tests live in `tests/cli.rs` and exercise the binary end-to-end via `assert_cmd`.
 - The integration test in `tests/integration.rs` exercises the full pipeline against `tests/fixtures/sample_project/` and is the only test that catches path-matching regressions across the complexity/coverage boundary.
 - The fixture includes a deliberate relative-path LCOV file to exercise suffix matching.
