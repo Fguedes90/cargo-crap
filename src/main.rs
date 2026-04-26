@@ -14,7 +14,9 @@ use cargo_crap::{
     score::DEFAULT_THRESHOLD,
 };
 use clap::{Parser, ValueEnum};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -93,6 +95,20 @@ impl From<FormatArg> for Format {
     }
 }
 
+/// Create a stderr spinner for the given message. Automatically suppressed
+/// when stderr is not a TTY (CI, pipes).
+fn spinner(msg: &'static str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", ""]),
+    );
+    pb.set_message(msg);
+    pb.enable_steady_tick(Duration::from_millis(80));
+    pb
+}
+
 fn main() -> Result<()> {
     // When invoked as `cargo crap ...`, cargo sets argv = ["cargo-crap", "crap", ...].
     // Strip the redundant leading token so clap sees what it expects.
@@ -112,15 +128,18 @@ fn main() -> Result<()> {
     }
 
     // --- Complexity pass ---
+    let pb = spinner("Analyzing source files…");
     let complexity = complexity::analyze_tree(&cli.path)
         .with_context(|| format!("analyzing {}", cli.path.display()))?;
 
     // --- Coverage pass (optional) ---
+    pb.set_message("Parsing coverage report…");
     let coverage = match &cli.lcov {
         Some(lcov_path) => coverage::parse_lcov(lcov_path)
             .with_context(|| format!("parsing LCOV file {}", lcov_path.display()))?,
         None => Default::default(),
     };
+    pb.finish_and_clear();
 
     // --- Merge ---
     let mut entries = merge(complexity, coverage, cli.missing.into());

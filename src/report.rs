@@ -3,9 +3,61 @@
 use crate::merge::CrapEntry;
 use crate::score::Severity;
 use anyhow::Result;
-use comfy_table::{presets::UTF8_FULL, Attribute, Cell, Color, Table};
+use comfy_table::{presets::UTF8_FULL, Attribute, Cell, CellAlignment, Color, Table};
 use owo_colors::OwoColorize;
 use std::io::Write;
+
+/// Three-tier severity used for row icons and colour.
+///
+/// `Moderate` sits between `threshold / 3` and `threshold` — a visible warning
+/// that a function is worth watching before it crosses the line.
+enum Grade {
+    Clean,
+    Moderate,
+    Crappy,
+}
+
+impl Grade {
+    fn of(score: f64, threshold: f64) -> Self {
+        if score > threshold {
+            Self::Crappy
+        } else if score > threshold / 3.0 {
+            Self::Moderate
+        } else {
+            Self::Clean
+        }
+    }
+
+    fn icon(&self) -> &'static str {
+        match self {
+            Self::Clean    => "✓",
+            Self::Moderate => "▲",
+            Self::Crappy   => "✗",
+        }
+    }
+
+    fn color(&self) -> Color {
+        match self {
+            Self::Clean    => Color::Green,
+            Self::Moderate => Color::Yellow,
+            Self::Crappy   => Color::Red,
+        }
+    }
+}
+
+/// Render a coverage value as a 10-block bar followed by the numeric percentage.
+///
+/// `None` (no coverage data) renders as an empty bar and a dash.
+fn coverage_bar(pct: Option<f64>) -> String {
+    match pct {
+        None => format!("{:░<10}    —", ""),
+        Some(p) => {
+            let filled = ((p / 100.0) * 10.0).round() as usize;
+            let filled = filled.min(10);
+            format!("{}{} {:>5.1}%", "█".repeat(filled), "░".repeat(10 - filled), p)
+        }
+    }
+}
 
 /// Output format for the report.
 #[derive(Debug, Clone, Copy)]
@@ -57,12 +109,16 @@ fn build_table(entries: &[CrapEntry], threshold: f64) -> Table {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
     table.set_header(vec![
+        Cell::new("").add_attribute(Attribute::Bold),
         Cell::new("CRAP").add_attribute(Attribute::Bold),
         Cell::new("CC").add_attribute(Attribute::Bold),
-        Cell::new("Cov %").add_attribute(Attribute::Bold),
+        Cell::new("Coverage").add_attribute(Attribute::Bold),
         Cell::new("Function").add_attribute(Attribute::Bold),
         Cell::new("Location").add_attribute(Attribute::Bold),
     ]);
+    // Numeric columns read more naturally when right-aligned.
+    table.column_mut(1).unwrap().set_cell_alignment(CellAlignment::Right);
+    table.column_mut(2).unwrap().set_cell_alignment(CellAlignment::Right);
     for entry in entries {
         table.add_row(build_row(entry, threshold));
     }
@@ -71,19 +127,13 @@ fn build_table(entries: &[CrapEntry], threshold: f64) -> Table {
 
 /// Build one table row for a single entry.
 fn build_row(entry: &CrapEntry, threshold: f64) -> Vec<Cell> {
-    let severity = Severity::classify(entry.crap, threshold);
-    let crap_cell = match severity {
-        Severity::Crappy => Cell::new(format!("{:.1}", entry.crap)).fg(Color::Red),
-        Severity::Clean => Cell::new(format!("{:.1}", entry.crap)).fg(Color::Green),
-    };
-    let cov_str = match entry.coverage {
-        Some(c) => format!("{c:.1}"),
-        None => "—".to_string(),
-    };
+    let grade = Grade::of(entry.crap, threshold);
+    let color = grade.color();
     vec![
-        crap_cell,
-        Cell::new(format!("{:.0}", entry.cyclomatic)),
-        Cell::new(cov_str),
+        Cell::new(grade.icon()).fg(color),
+        Cell::new(format!("{:.1}", entry.crap)).fg(color),
+        Cell::new(entry.cyclomatic as usize),
+        Cell::new(coverage_bar(entry.coverage)),
         Cell::new(&entry.function),
         Cell::new(format!("{}:{}", entry.file.display(), entry.line)),
     ]
@@ -198,18 +248,17 @@ mod tests {
     fn human_summary_shows_cross_with_correct_count() {
         // Kills: severity check `== Crappy` replaced with `== Clean` (count stays 0),
         //        and `crappy_count += 1` replaced with *= 1 (count stays 0).
+        //
+        // Note: ✓ appears in the row icon for the clean function, so we check
+        // the summary count rather than the absence of ✓ in the full output.
         let mut buf = Vec::new();
         render(&sample(), 30.0, Format::Human, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.contains('✗'),
-            "summary must show ✗ when a function is crappy"
+            "output must show ✗ for crappy functions"
         );
         assert!(s.contains("1/2"), "summary must report 1 out of 2 crappy");
-        assert!(
-            !s.contains('✓'),
-            "summary must not show ✓ when something is crappy"
-        );
     }
 
     #[test]
@@ -279,5 +328,86 @@ mod tests {
         render(&both_crappy, 30.0, Format::Human, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("2/2"), "both functions crappy, must report 2/2");
+    }
+
+    // --- coverage_bar ---
+
+    #[test]
+    fn coverage_bar_is_all_empty_for_zero_percent() {
+        // Kills: filled = pct * 10 replaced with 10 - pct * 10, or always 0.
+        let bar = coverage_bar(Some(0.0));
+        assert!(
+            bar.starts_with("░░░░░░░░░░"),
+            "0% must start with 10 empty blocks, got: {bar}"
+        );
+        assert!(bar.contains("0.0%"), "0% must include numeric label");
+    }
+
+    #[test]
+    fn coverage_bar_is_all_full_for_100_percent() {
+        // Kills: filled = pct * 10 replaced with 0, or empty/full swapped.
+        let bar = coverage_bar(Some(100.0));
+        assert!(
+            bar.starts_with("██████████"),
+            "100% must start with 10 full blocks, got: {bar}"
+        );
+        assert!(bar.contains("100.0%"), "100% must include numeric label");
+    }
+
+    #[test]
+    fn coverage_bar_is_half_full_for_50_percent() {
+        // Kills: rounding errors that shift the boundary, filled/empty swap.
+        let bar = coverage_bar(Some(50.0));
+        assert!(
+            bar.starts_with("█████░░░░░"),
+            "50% must have 5 full then 5 empty blocks, got: {bar}"
+        );
+    }
+
+    #[test]
+    fn coverage_bar_none_is_all_empty_with_dash() {
+        // Already exercised indirectly, but this pins the direct function contract.
+        let bar = coverage_bar(None);
+        assert!(
+            bar.contains("░░░░░░░░░░"),
+            "None must render with all-empty bar, got: {bar}"
+        );
+        assert!(bar.contains("—"), "None must use — instead of a percentage");
+    }
+
+    // --- Grade tiers ---
+
+    #[test]
+    fn grade_tier_boundaries_are_correct() {
+        // With threshold=30, the three zones are:
+        //   Clean:    score ≤ 10  (≤ threshold/3)
+        //   Moderate: 10 < score ≤ 30
+        //   Crappy:   score > 30
+        //
+        // Kills: > replaced with >=, wrong divisor, tiers swapped.
+        assert_eq!(Grade::of(10.0,   30.0).icon(), "✓", "exactly threshold/3 → Clean");
+        assert_eq!(Grade::of(10.001, 30.0).icon(), "▲", "just above threshold/3 → Moderate");
+        assert_eq!(Grade::of(30.0,   30.0).icon(), "▲", "exactly threshold → Moderate (not Crappy)");
+        assert_eq!(Grade::of(30.001, 30.0).icon(), "✗", "just above threshold → Crappy");
+    }
+
+    #[test]
+    fn moderate_grade_shows_warning_triangle_in_output() {
+        // A function scored strictly between threshold/3 and threshold must
+        // show ▲ in the table, never ✓ or ✗.
+        // score=20, threshold=30 → Moderate tier.
+        let entries = vec![CrapEntry {
+            file: PathBuf::from("a.rs"),
+            function: "watch_me".into(),
+            line: 1,
+            cyclomatic: 5.0,
+            coverage: Some(0.0),
+            crap: 20.0,
+        }];
+        let mut buf = Vec::new();
+        render(&entries, 30.0, Format::Human, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains('▲'), "moderate score must show ▲");
+        assert!(!s.contains('✗'), "moderate score must not show ✗");
     }
 }
