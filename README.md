@@ -156,7 +156,6 @@ jobs:
 
 - [Savoia, A. & Evans, B. (2007). *The CRAP Metric.*](https://www.artima.com/weblogs/viewpost.jsp?thread=210575)
 - [Crap4j](http://www.crap4j.org/) — the original Java implementation.
-- [syn](https://github.com/dtolnay/syn) — the Rust AST library used for parsing and complexity analysis.
 
 ## License
 
