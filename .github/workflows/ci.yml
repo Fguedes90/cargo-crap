@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
 
 env:
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -43,11 +43,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
   msrv:
-    name: MSRV (Rust 1.75)
+    name: MSRV (Rust 1.85)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.75
+      - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - name: Build (MSRV)
         run: cargo build --all-targets
@@ -63,8 +63,26 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  # Dogfood: run cargo-crap against its own codebase.
+  mutants:
+    name: Mutation tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+      - name: Run mutation tests
+        run: cargo mutants --timeout 60
+      - name: Upload mutants output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-out
+          path: mutants.out/
 
+  # Dogfood: run cargo-crap against its own codebase.
   # If our own core modules get crappy, we want to know.
   self_score:
     name: Self-score
@@ -81,4 +99,5 @@ jobs:
       - name: Generate coverage
         run: cargo llvm-cov --lcov --output-path lcov.info --workspace
       - name: Run cargo-crap on itself
-        run: cargo run --release -- --lcov lcov.info --path src --threshold 30 --fail-above
+        run: cargo run --release -- --lcov lcov.info --path src --threshold 30
+          --fail-above
