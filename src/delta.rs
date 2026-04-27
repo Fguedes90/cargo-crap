@@ -88,6 +88,10 @@ pub fn load_baseline(path: &Path) -> Result<Vec<CrapEntry>> {
     })
 }
 
+fn path_key(p: &Path) -> String {
+    p.to_string_lossy().replace('\\', "/")
+}
+
 /// Join current results against a baseline and compute per-function deltas.
 ///
 /// **Join key**: exact `(file_path, function_name)` pair. This is reliable
@@ -101,12 +105,7 @@ pub fn compute_delta(
 ) -> DeltaReport {
     let baseline_index: HashMap<(String, String), f64> = baseline
         .iter()
-        .map(|e| {
-            (
-                (e.file.to_string_lossy().into_owned(), e.function.clone()),
-                e.crap,
-            )
-        })
+        .map(|e| ((path_key(&e.file), e.function.clone()), e.crap))
         .collect();
 
     let mut matched: HashSet<(String, String)> = HashSet::new();
@@ -114,7 +113,7 @@ pub fn compute_delta(
     let entries: Vec<DeltaEntry> = current
         .iter()
         .map(|e| {
-            let key = (e.file.to_string_lossy().into_owned(), e.function.clone());
+            let key = (path_key(&e.file), e.function.clone());
             let baseline_crap = baseline_index.get(&key).copied();
             if baseline_crap.is_some() {
                 matched.insert(key);
@@ -147,7 +146,7 @@ pub fn compute_delta(
     let removed: Vec<RemovedEntry> = baseline
         .iter()
         .filter(|e| {
-            let key = (e.file.to_string_lossy().into_owned(), e.function.clone());
+            let key = (path_key(&e.file), e.function.clone());
             !matched.contains(&key)
         })
         .map(|e| RemovedEntry {
