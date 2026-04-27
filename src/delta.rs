@@ -280,4 +280,69 @@ mod tests {
         assert!(report.entries.iter().all(|e| e.status == DeltaStatus::New));
         assert!(report.removed.is_empty());
     }
+
+    #[test]
+    fn functions_in_different_files_are_not_matched() {
+        // Kills: replace path_key -> String with String::new() or "xyzzy".into()
+        //
+        // If path_key collapses to a constant, ("", "foo") in current matches
+        // ("", "foo") in baseline regardless of file — "foo" would appear as
+        // Unchanged instead of New, and the baseline entry would not be Removed.
+        let current = vec![CrapEntry {
+            file: PathBuf::from("src/lib.rs"),
+            function: "foo".into(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap: 5.0,
+        }];
+        let baseline = vec![CrapEntry {
+            file: PathBuf::from("src/main.rs"), // different file, same function name
+            function: "foo".into(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap: 5.0,
+        }];
+        let report = compute_delta(&current, &baseline);
+        assert_eq!(
+            report.entries[0].status,
+            DeltaStatus::New,
+            "foo in src/lib.rs must not match foo in src/main.rs"
+        );
+        assert_eq!(
+            report.removed.len(),
+            1,
+            "baseline foo must appear as removed"
+        );
+    }
+
+    #[test]
+    fn backslash_paths_match_forward_slash_baseline() {
+        // Baseline saved on Linux (forward slashes); current run on Windows
+        // (backslashes). path_key must normalize both to the same key.
+        let current = vec![CrapEntry {
+            file: PathBuf::from("tests\\fixtures\\src\\lib.rs"),
+            function: "foo".into(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap: 10.0,
+        }];
+        let baseline = vec![CrapEntry {
+            file: PathBuf::from("tests/fixtures/src/lib.rs"),
+            function: "foo".into(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap: 5.0,
+        }];
+        let report = compute_delta(&current, &baseline);
+        assert_eq!(
+            report.entries[0].status,
+            DeltaStatus::Regressed,
+            "backslash path must match its forward-slash baseline counterpart"
+        );
+        assert!(report.removed.is_empty());
+    }
 }
