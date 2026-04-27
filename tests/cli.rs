@@ -416,6 +416,490 @@ fn allow_invalid_glob_exits_with_error() {
         .stderr(predicate::str::contains("invalid allow pattern"));
 }
 
+// --- --output ---
+
+#[test]
+fn output_writes_to_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out_path = dir.path().join("out.json");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&out_path)
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(&out_path).expect("output file must exist");
+    let parsed: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
+    assert!(parsed.is_array(), "--output must write a JSON array");
+    assert!(
+        !parsed.as_array().unwrap().is_empty(),
+        "output file must contain at least one entry"
+    );
+}
+
+// --- --baseline / delta mode ---
+
+#[test]
+fn baseline_shows_delta_output() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    // Save baseline.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    // Run with baseline — should show delta summary.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unchanged"));
+}
+
+#[test]
+fn baseline_json_output_has_entries_and_removed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    // Save baseline.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    // Delta JSON must have "entries" and "removed" keys.
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert!(
+        parsed.get("entries").is_some(),
+        "delta JSON must have 'entries' key"
+    );
+    assert!(
+        parsed.get("removed").is_some(),
+        "delta JSON must have 'removed' key"
+    );
+}
+
+#[test]
+fn fail_regression_requires_baseline() {
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--fail-regression")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "--fail-regression requires --baseline",
+        ));
+}
+
+#[test]
+fn fail_regression_exits_zero_when_nothing_regressed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    // Save current run as baseline.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    // Comparing identical run against itself → no regressions.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--fail-regression")
+        .assert()
+        .success();
+}
+
+// --- delta format coverage (render_delta_github, render_delta_markdown, render_delta_human) ---
+
+/// Synthetic baseline JSON with `crappy` at a low score so the real run looks like a regression.
+fn regression_baseline(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    let baseline = serde_json::json!([{
+        "file": "tests/fixtures/sample_project/src/lib.rs",
+        "function": "crappy",
+        "line": 24,
+        "cyclomatic": 12.0,
+        "coverage": 100.0,
+        "crap": 1.0
+    }]);
+    let path = dir.path().join("baseline.json");
+    std::fs::write(&path, baseline.to_string()).expect("write baseline");
+    path
+}
+
+#[test]
+fn github_format_with_regression_emits_warning() {
+    // Exercises render_delta_github — only tested when a regression exists.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = regression_baseline(&dir);
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("github")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("::warning"))
+        .stdout(predicate::str::contains("crappy"));
+}
+
+#[test]
+fn markdown_format_with_baseline_shows_delta_table() {
+    // Exercises render_delta_markdown.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("|---"))
+        // Summary line uses "unchanged" or "regressed" depending on run order.
+        .stdout(predicate::str::contains("↑"));
+}
+
+#[test]
+fn markdown_format_with_regression_shows_delta_row() {
+    // Exercises render_delta_markdown with a regression so the Δ column is non-blank.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = regression_baseline(&dir);
+
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("markdown")
+        .output()
+        .expect("run");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    assert!(
+        stdout.contains("crappy"),
+        "markdown delta table must name the regressed function"
+    );
+    assert!(
+        stdout.contains('+'),
+        "delta column must show positive delta for regression"
+    );
+}
+
+/// Baseline JSON with a function that doesn't exist in the fixture source.
+fn removed_baseline(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    let baseline = serde_json::json!([{
+        "file": "tests/fixtures/sample_project/src/lib.rs",
+        "function": "phantom_that_was_deleted",
+        "line": 1,
+        "cyclomatic": 1.0,
+        "coverage": 100.0,
+        "crap": 1.0
+    }]);
+    let path = dir.path().join("baseline.json");
+    std::fs::write(&path, baseline.to_string()).expect("write baseline");
+    path
+}
+
+#[test]
+fn delta_human_shows_removed_functions_section() {
+    // Exercises render_delta_human's "Removed since baseline" branch.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = removed_baseline(&dir);
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed since baseline"))
+        .stdout(predicate::str::contains("phantom_that_was_deleted"));
+}
+
+#[test]
+fn delta_markdown_shows_removed_functions_section() {
+    // Exercises write_markdown_removed via render_delta_markdown.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = removed_baseline(&dir);
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed since baseline"))
+        .stdout(predicate::str::contains("phantom_that_was_deleted"));
+}
+
+#[test]
+fn delta_human_no_functions_found_when_everything_excluded() {
+    // Exercises render_delta_human's empty-entries-and-removed branch.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+    // Empty baseline — no entries or removed.
+    std::fs::write(&baseline_path, "[]").expect("write empty baseline");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--exclude")
+        .arg("**/*.rs")
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No functions found"));
+}
+
+#[test]
+fn markdown_format_empty_when_all_excluded() {
+    // Exercises render_markdown's empty-entries branch.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--exclude")
+        .arg("**/*.rs")
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No functions found"));
+}
+
+#[test]
+fn markdown_format_all_clean_shows_tick_summary() {
+    // Exercises render_markdown's crappy==0 summary branch.
+    // --missing optimistic + high threshold → everything clean.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--missing")
+        .arg("optimistic")
+        .arg("--threshold")
+        .arg("9999")
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("✓"));
+}
+
+#[test]
+fn markdown_format_none_coverage_shows_dash() {
+    // Exercises the None coverage arm in render_markdown.
+    // No --lcov means coverage is missing → None → "—" in table.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("—"));
+}
+
+// --- --format markdown ---
+
+#[test]
+fn markdown_format_produces_gfm_table() {
+    // Must contain a GFM header separator row and at least one data row.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("|---"))
+        .stdout(predicate::str::contains("crappy"))
+        .stdout(predicate::str::contains("CRAP"));
+}
+
+#[test]
+fn markdown_format_contains_all_fixture_functions() {
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .stdout(predicate::str::contains("trivial"))
+        .stdout(predicate::str::contains("moderate"))
+        .stdout(predicate::str::contains("crappy"));
+}
+
+// --- --summary ---
+
+#[test]
+fn summary_prints_aggregate_stats_without_table() {
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--summary")
+        .output()
+        .expect("run");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    // Must mention "Analyzed" and "Crappy" but NOT the full table border.
+    assert!(
+        stdout.contains("Analyzed"),
+        "summary must mention 'Analyzed'"
+    );
+    assert!(stdout.contains("Crappy"), "summary must mention 'Crappy'");
+    // The UTF-8 box-drawing character used by comfy-table should NOT appear.
+    assert!(
+        !stdout.contains('╞'),
+        "summary must not contain table borders"
+    );
+}
+
+#[test]
+fn summary_names_worst_offender_when_crappy() {
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--summary")
+        .output()
+        .expect("run");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    // crappy (CC=12, 0% cov → CRAP=156) is the worst offender.
+    assert!(
+        stdout.contains("crappy"),
+        "summary must name the worst function, got: {stdout}"
+    );
+}
+
+#[test]
+fn summary_exits_zero_when_all_clean() {
+    // With --missing optimistic every function scores as if 100% covered.
+    // trivial/moderate/crappy all have CC ≤ 12, so they all pass threshold=30.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--missing")
+        .arg("optimistic")
+        .arg("--summary")
+        .arg("--fail-above")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Crappy: 0"));
+}
+
+// --- --workspace ---
+
+#[test]
+fn workspace_flag_analyzes_workspace_members() {
+    // Run --workspace from the repo root; should find at least one function
+    // from this crate's own source.
+    cmd()
+        .arg("--workspace")
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^\[").expect("json starts with ["))
+        .stdout(predicate::str::contains("function"));
+}
+
 // --- cargo subcommand invocation ---
 
 #[test]
@@ -428,4 +912,303 @@ fn cargo_subcommand_form_strips_crap_argument() {
         .assert()
         .success()
         .stdout(predicate::str::is_match(r"^\[").expect("json starts with ["));
+}
+
+// --- exit-code gate: --fail-regression with an actual regression ---
+
+#[test]
+fn fail_regression_exits_one_when_regression_exists() {
+    // Kills: replacing `||` with `&&` on the fail_regression assignment line —
+    // that mutant would zero out fail_regression when config doesn't also set
+    // it, causing the gate never to fire via CLI flag alone.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = regression_baseline(&dir);
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--fail-regression")
+        .assert()
+        .failure(); // crappy went from 1.0 → 156.0 → regression
+}
+
+// --- --fail-above combined with --baseline (baseline path in do_render) ---
+
+#[test]
+fn fail_above_with_baseline_exits_one_when_crappy() {
+    // Kills: replacing `> 0` with `== 0` / `< 0` / `>= 0` for has_crappy
+    // inside the baseline branch of do_render.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = regression_baseline(&dir);
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--fail-above") // crappy CRAP=156 > threshold 30 → exit 1
+        .assert()
+        .failure();
+}
+
+#[test]
+fn fail_above_with_baseline_exits_zero_when_clean() {
+    // Kills: replacing `> 0` with `< 0` for has_crappy in the baseline branch.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--fail-above")
+        .arg("--threshold")
+        .arg("9999") // nothing crappy → must exit 0
+        .assert()
+        .success();
+}
+
+// --- delta human table presence (render_delta_human table branch) ---
+
+#[test]
+fn delta_human_table_shows_function_names() {
+    // Kills three mutants in render_delta_human / build_delta_table / build_delta_row:
+    //   - deleting `!` in `if !report.entries.is_empty()` hides the table
+    //   - replacing build_delta_table with Default::default() produces empty table
+    //   - replacing build_delta_row with vec![] produces rows with no cells
+    // All three suppress function names; checking for them here catches all three.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = removed_baseline(&dir); // current fns are all "New"
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("crappy"))
+        .stdout(predicate::str::contains("trivial"));
+}
+
+// --- delta human summary counts (write_delta_summary == comparisons) ---
+
+#[test]
+fn delta_human_summary_shows_accurate_counts() {
+    // Kills: replacing `== DeltaStatus::X` with `!= DeltaStatus::X` in
+    // write_delta_summary — flips counts so "0 regressed" becomes "N regressed".
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    // Baseline = current → everything Unchanged.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 regressed"))
+        .stdout(predicate::str::contains("0 improved"))
+        .stdout(predicate::str::contains("0 new"))
+        // The fixture has 3 functions; all are Unchanged. Checks
+        // `== DeltaStatus::Unchanged` (kills the `!= Unchanged` mutant).
+        .stdout(predicate::str::contains("3 unchanged"));
+}
+
+// --- delta markdown summary counts (render_delta_markdown == comparisons) ---
+
+#[test]
+fn delta_markdown_summary_shows_accurate_counts() {
+    // Kills: replacing `== DeltaStatus::X` with `!= DeltaStatus::X` in the
+    // markdown summary count loops (render_delta_markdown).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 regressed"))
+        .stdout(predicate::str::contains("0 improved"))
+        .stdout(predicate::str::contains("0 new"))
+        // 3 fixture functions all Unchanged — kills `!= Unchanged` mutant.
+        .stdout(predicate::str::contains("3 unchanged"));
+}
+
+// --- --summary --baseline (render_delta_summary) ---
+
+#[test]
+fn summary_with_baseline_shows_delta_counts() {
+    // Kills: replacing render_delta_summary body with Ok(()) — output would be
+    // empty. Also kills the `== DeltaStatus::X` comparisons inside it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = dir.path().join("baseline.json");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .arg("--output")
+        .arg(&baseline_path)
+        .assert()
+        .success();
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--summary")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 regressed"))
+        .stdout(predicate::str::contains("0 improved"))
+        .stdout(predicate::str::contains("0 new"))
+        // 3 fixture functions all Unchanged — kills `!= Unchanged` mutant.
+        .stdout(predicate::str::contains("3 unchanged"));
+}
+
+// --- GitHub format: new function above threshold ---
+
+#[test]
+fn github_new_function_above_threshold_gets_warning() {
+    // Kills two mutants in render_delta_github:
+    //   - deleting the `DeltaStatus::New` arm → new crappy functions silently ignored
+    //   - replacing `> threshold` with `< threshold` → no warning for high-scoring new fns
+    // Uses removed_baseline so crappy/moderate/trivial are all New in the current run.
+    // crappy (CRAP=156) > threshold 30 → must emit ::warning.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = removed_baseline(&dir);
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("github")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("::warning"))
+        .stdout(predicate::str::contains("crappy"));
+}
+
+#[test]
+fn github_new_function_at_threshold_is_not_warned() {
+    // Kills: replacing `> threshold` with `>= threshold` in the DeltaStatus::New
+    // arm of render_delta_github.
+    //
+    // crappy (CC=12, 0% cov) scores CRAP=156.0 exactly. Setting threshold=156
+    // means `156 > 156` is false → no warning. With the `>=` mutant,
+    // `156 >= 156` is true → warning emitted. Asserting empty output catches it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline_path = removed_baseline(&dir); // all current fns are New
+
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--format")
+        .arg("github")
+        .arg("--threshold")
+        .arg("156") // crappy CRAP=156.0 is exactly at threshold
+        .output()
+        .expect("run");
+
+    assert!(
+        output.stdout.is_empty(),
+        "function at exactly the threshold must not emit a warning, got: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+// --- markdown clean summary specific text ---
+
+#[test]
+fn markdown_clean_summary_says_none_exceed() {
+    // Kills: replacing `crappy == 0` with `crappy != 0` in render_markdown —
+    // the "✓ … none exceed …" line would not be emitted when everything is clean.
+    // Checking for "none exceed" (not just "✓") avoids false positives from the
+    // grade icon column which also shows ✓ per clean function row.
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--missing")
+        .arg("optimistic")
+        .arg("--threshold")
+        .arg("9999")
+        .arg("--format")
+        .arg("markdown")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("none exceed CRAP threshold"));
 }

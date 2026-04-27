@@ -562,6 +562,48 @@ mod tests {
     }
 
     #[test]
+    fn non_cfg_test_module_functions_are_included() {
+        // Kills: replacing visit_item_mod with () — a no-op body would skip
+        // ALL module traversal, not just #[cfg(test)] ones.
+        // Also kills: replacing is_cfg_test with `true` — everything would
+        // look like a test module and be skipped.
+        let f = write_temp(
+            r#"
+mod inner {
+    pub fn in_module() -> i32 { 1 }
+}
+"#,
+        );
+        let fns = analyze_file(f.path()).expect("analyze");
+        let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
+        assert!(
+            names.contains(&"in_module"),
+            "fn inside a plain mod must be included, got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn cfg_feature_module_is_not_skipped() {
+        // Kills: replacing `&&` with `||` in is_cfg_test — that mutation
+        // would make any `#[cfg(...)]` attribute look like #[cfg(test)],
+        // causing #[cfg(feature = "...")] modules to be wrongly excluded.
+        let f = write_temp(
+            r#"
+#[cfg(feature = "extra")]
+mod extra {
+    pub fn feature_fn() -> i32 { 1 }
+}
+"#,
+        );
+        let fns = analyze_file(f.path()).expect("analyze");
+        let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
+        assert!(
+            names.contains(&"feature_fn"),
+            "#[cfg(feature = ...)] mod must not be skipped, got: {names:?}"
+        );
+    }
+
+    #[test]
     fn only_test_attribute_is_filtered_not_other_attributes() {
         // A fn with an unrelated attribute (#[allow(...)]) must NOT be excluded.
         let f = write_temp(

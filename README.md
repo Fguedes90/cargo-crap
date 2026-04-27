@@ -42,35 +42,47 @@ cargo crap --lcov lcov.info
 
 # 3. Gate CI on the threshold.
 cargo crap --lcov lcov.info --fail-above
+
+# 4. Whole-workspace analysis (monorepos).
+cargo llvm-cov --workspace --lcov --output-path lcov.info
+cargo crap --workspace --lcov lcov.info
+
+# 5. Quick aggregate summary (no table).
+cargo crap --workspace --lcov lcov.info --summary
 ```
 
 Example output:
 
 ```
-┌───────┬────┬───────┬──────────┬───────────────┐
-│ CRAP  │ CC │ Cov % │ Function │ Location      │
-╞═══════╪════╪═══════╪══════════╪═══════════════╡
-│ 156.0 │ 12 │ 0.0   │ crappy   │ src/lib.rs:24 │
-│ 6.7   │ 4  │ 44.4  │ moderate │ src/lib.rs:12 │
-│ 1.0   │ 1  │ 100.0 │ trivial  │ src/lib.rs:8  │
-└───────┴────┴───────┴──────────┴───────────────┘
+┌───┬───────┬────┬───────────────────┬──────────┬───────────────┐
+│   │  CRAP │ CC │ Coverage          │ Function │ Location      │
+╞═══╪═══════╪════╪═══════════════════╪══════════╪═══════════════╡
+│ ✗ │ 156.0 │ 12 │ ░░░░░░░░░░   0.0% │ crappy   │ src/lib.rs:24 │
+│ ▲ │   6.7 │  4 │ ████░░░░░░  44.4% │ moderate │ src/lib.rs:12 │
+│ ✓ │   1.0 │  1 │ ██████████ 100.0% │ trivial  │ src/lib.rs:8  │
+└───┴───────┴────┴───────────────────┴──────────┴───────────────┘
 ✗ 1/3 function(s) exceed CRAP threshold 30.
 ```
 
 ## Flags
 
-| Flag                                      | Default       | Purpose                                                                           |
-| ----------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| `--lcov <FILE>`                           | —             | LCOV file from `cargo llvm-cov` or `cargo tarpaulin`.                             |
-| `--path <DIR>`                            | `.`           | Root to walk for `.rs` files (respects `.gitignore`).                             |
-| `--threshold <N>`                         | `30`          | Score above which a function is flagged.                                          |
-| `--min <SCORE>`                           | —             | Hide entries below this score.                                                    |
-| `--top <N>`                               | —             | Show only the N worst offenders.                                                  |
-| `--missing {pessimistic,optimistic,skip}` | `pessimistic` | How to score a function with no coverage data.                                    |
-| `--exclude <GLOB>`                        | —             | Skip files matching this pattern (repeatable). `**` crosses directories.          |
-| `--allow <GLOB>`                          | —             | Suppress functions whose names match this pattern (repeatable). `*` matches `::`. |
-| `--format {human,json,github}`            | `human`       | Output format. `github` emits `::warning` annotations for GitHub Actions.         |
-| `--fail-above`                            | off           | Exit 1 if any function exceeds `--threshold`.                                     |
+| Flag                                      | Default       | Purpose                                                                                                 |
+| ----------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+| `--lcov <FILE>`                           | —             | LCOV file from `cargo llvm-cov` or `cargo tarpaulin`.                                                   |
+| `--path <DIR>`                            | `.`           | Root to walk for `.rs` files (respects `.gitignore`).                                                   |
+| `--threshold <N>`                         | `30`          | Score above which a function is flagged.                                                                |
+| `--min <SCORE>`                           | —             | Hide entries below this score.                                                                          |
+| `--top <N>`                               | —             | Show only the N worst offenders.                                                                        |
+| `--missing {pessimistic,optimistic,skip}` | `pessimistic` | How to score a function with no coverage data.                                                          |
+| `--exclude <GLOB>`                        | —             | Skip files matching this pattern (repeatable). `**` crosses directories.                                |
+| `--allow <GLOB>`                          | —             | Suppress functions whose names match this pattern (repeatable). `*` matches `::`.                       |
+| `--format {human,json,github,markdown}`   | `human`       | Output format. `github` emits `::warning` annotations for GitHub Actions. `markdown` emits a GFM table. |
+| `--summary`                               | off           | Print only aggregate stats (total, crappy count, worst offender) — no per-function table.               |
+| `--workspace`                             | off           | Analyze all Cargo workspace members (discovered via `cargo metadata`). Ignores `--path`.                |
+| `--fail-above`                            | off           | Exit 1 if any function exceeds `--threshold`.                                                           |
+| `--baseline <FILE>`                       | —             | JSON from a previous `--format json` run. Enables delta mode (shows Δ column).                          |
+| `--fail-regression`                       | off           | Exit 1 if any function's score increased since `--baseline`. Requires `--baseline`.                     |
+| `--output <FILE>`                         | —             | Write output to FILE instead of stdout (useful for saving JSON baselines).                              |
 
 ## Configuration file
 
@@ -91,7 +103,7 @@ All keys are optional. Unknown keys are rejected to catch typos.
 
 ## Design
 
-The tool has four orthogonal layers. Each is testable in isolation; the
+The tool has six orthogonal modules. Each is testable in isolation; the
 join between them has its own integration test.
 
 ```
@@ -110,8 +122,12 @@ join between them has its own integration test.
              │  merge   │  ← path normalization lives here
              └─────┬────┘
                    ▼
+             ┌──────────┐     ┌───────┐
+             │  score   │ ──▶ │ delta │  ← baseline comparison (optional)
+             └─────┬────┘     └───────┘
+                   ▼
              ┌──────────┐
-             │  report  │
+             │  report  │  ← human / JSON / GitHub / Markdown
              └──────────┘
 ```
 
@@ -154,22 +170,34 @@ the coverage run was scoped to a subset of the workspace. Three policies:
 
 ## Integrating with CI
 
+### Absolute threshold gate
+
 ```yaml
-# .github/workflows/crap.yml
-name: CRAP
-on: [pull_request]
-jobs:
-  crap:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo install cargo-crap
-      - run: cargo llvm-cov --lcov --output-path lcov.info
-      - run: cargo crap --lcov lcov.info --fail-above --threshold 30
+- run: cargo llvm-cov --lcov --output-path lcov.info
+- run: cargo crap --lcov lcov.info --fail-above --threshold 30
+```
+
+### Regression gate (recommended for teams)
+
+Save a baseline on `main`, then fail on any PR that makes a score go up.
+This works regardless of the absolute threshold and catches regressions as
+they are introduced, not weeks later.
+
+```yaml
+# On main branch — upload baseline as a CI artifact
+- run: cargo llvm-cov --lcov --output-path lcov.info
+- run: cargo crap --lcov lcov.info --format json --output baseline.json
+- uses: actions/upload-artifact@v4
+  with:
+    name: crap-baseline
+    path: baseline.json
+
+# On pull requests — download baseline and compare
+- uses: actions/download-artifact@v4
+  with:
+    name: crap-baseline
+- run: cargo llvm-cov --lcov --output-path lcov.info
+- run: cargo crap --lcov lcov.info --baseline baseline.json --fail-regression
 ```
 
 ## Prior art and references

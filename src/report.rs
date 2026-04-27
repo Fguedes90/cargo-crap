@@ -1,5 +1,6 @@
 //! Render [`CrapEntry`] lists as either a human-readable table or JSON.
 
+use crate::delta::{DeltaEntry, DeltaReport, DeltaStatus};
 use crate::merge::CrapEntry;
 use crate::score::Severity;
 use anyhow::Result;
@@ -80,6 +81,9 @@ pub enum Format {
     /// Only functions that exceed the threshold produce an annotation —
     /// clean functions are silent.
     GitHub,
+    /// GitHub-Flavored Markdown table — suitable for pasting into PR comments
+    /// or saving to a file rendered by GitHub/GitLab.
+    Markdown,
 }
 
 /// Render `entries` in the requested format to `out`.
@@ -87,22 +91,23 @@ pub enum Format {
 /// For `Format::Human` we emit a table and a summary line. The summary uses
 /// stderr-style coloring if the output is a TTY; `owo-colors` no-ops when
 /// it's not.
-pub fn render<W: Write>(
+pub fn render(
     entries: &[CrapEntry],
     threshold: f64,
     format: Format,
-    out: &mut W,
+    out: &mut dyn Write,
 ) -> Result<()> {
     match format {
         Format::Json => render_json(entries, out),
         Format::Human => render_human(entries, threshold, out),
         Format::GitHub => render_github(entries, threshold, out),
+        Format::Markdown => render_markdown(entries, threshold, out),
     }
 }
 
-fn render_json<W: Write>(
+fn render_json(
     entries: &[CrapEntry],
-    out: &mut W,
+    out: &mut dyn Write,
 ) -> Result<()> {
     serde_json::to_writer_pretty(&mut *out, entries)?;
     out.write_all(b"\n")?;
@@ -117,10 +122,10 @@ fn render_json<W: Write>(
 ///
 /// Special characters (`%`, CR, LF) in the message are percent-encoded per
 /// the GitHub Actions workflow-command spec.
-fn render_github<W: Write>(
+fn render_github(
     entries: &[CrapEntry],
     threshold: f64,
-    out: &mut W,
+    out: &mut dyn Write,
 ) -> Result<()> {
     let cwd = std::env::current_dir().unwrap_or_default();
 
@@ -165,10 +170,10 @@ fn gha_escape(s: &str) -> String {
         .replace('\n', "%0A")
 }
 
-fn render_human<W: Write>(
+fn render_human(
     entries: &[CrapEntry],
     threshold: f64,
-    out: &mut W,
+    out: &mut dyn Write,
 ) -> Result<()> {
     if entries.is_empty() {
         writeln!(out, "No functions found.")?;
@@ -232,8 +237,8 @@ fn build_row(
 }
 
 /// Write the one-line summary (✓ or ✗) after the table.
-fn write_summary<W: Write>(
-    out: &mut W,
+fn write_summary(
+    out: &mut dyn Write,
     crappy: usize,
     total: usize,
     threshold: f64,
@@ -258,6 +263,449 @@ fn write_summary<W: Write>(
     }
     Ok(())
 }
+
+// ─── Markdown rendering ─────────────────────────────────────────────────────
+
+/// Render a GFM markdown table. Coverage bars are replaced by plain
+/// percentages so the table renders correctly in any markdown renderer.
+fn render_markdown(
+    entries: &[CrapEntry],
+    threshold: f64,
+    out: &mut dyn Write,
+) -> Result<()> {
+    if entries.is_empty() {
+        writeln!(out, "_No functions found._")?;
+        return Ok(());
+    }
+
+    writeln!(out, "| | CRAP | CC | Cov % | Function | Location |")?;
+    writeln!(out, "|---|---:|---:|---:|---|---|")?;
+
+    for entry in entries {
+        let grade = Grade::of(entry.crap, threshold);
+        let cov = match entry.coverage {
+            Some(p) => format!("{p:.1}"),
+            None => "—".to_string(),
+        };
+        writeln!(
+            out,
+            "| {} | {:.1} | {} | {} | `{}` | `{}:{}` |",
+            grade.icon(),
+            entry.crap,
+            entry.cyclomatic as usize,
+            cov,
+            entry.function,
+            entry.file.display(),
+            entry.line,
+        )?;
+    }
+
+    writeln!(out)?;
+    let crappy = crappy_count(entries, threshold);
+    if crappy == 0 {
+        writeln!(
+            out,
+            "✓ {} function(s) analyzed; none exceed CRAP threshold {}.",
+            entries.len(),
+            threshold
+        )?;
+    } else {
+        writeln!(
+            out,
+            "✗ {}/{} function(s) exceed CRAP threshold {}.",
+            crappy,
+            entries.len(),
+            threshold
+        )?;
+    }
+    Ok(())
+}
+
+/// Format the Δ column value for a single delta entry.
+///
+/// Shared by the human table (`build_delta_row`) and the markdown renderer.
+fn delta_display(de: &DeltaEntry) -> String {
+    match de.status {
+        DeltaStatus::Regressed | DeltaStatus::Improved => {
+            format!("{:+.1}", de.delta.unwrap())
+        },
+        DeltaStatus::New => "NEW".to_string(),
+        DeltaStatus::Unchanged => String::new(),
+    }
+}
+
+/// Write the "Removed since baseline" section for markdown output.
+fn write_markdown_removed(
+    removed: &[crate::delta::RemovedEntry],
+    out: &mut dyn Write,
+) -> Result<()> {
+    writeln!(out)?;
+    writeln!(out, "**Removed since baseline:**")?;
+    for r in removed {
+        writeln!(out, "- `{}` (was {:.1})", r.function, r.baseline_crap)?;
+    }
+    Ok(())
+}
+
+fn render_delta_markdown(
+    report: &DeltaReport,
+    threshold: f64,
+    out: &mut dyn Write,
+) -> Result<()> {
+    if report.entries.is_empty() && report.removed.is_empty() {
+        writeln!(out, "_No functions found._")?;
+        return Ok(());
+    }
+
+    writeln!(out, "| | CRAP | Δ | CC | Cov % | Function | Location |")?;
+    writeln!(out, "|---|---:|---:|---:|---:|---|---|")?;
+
+    for de in &report.entries {
+        let e = &de.current;
+        let grade = Grade::of(e.crap, threshold);
+        let cov = e.coverage.map_or("—".to_string(), |p| format!("{p:.1}"));
+        writeln!(
+            out,
+            "| {} | {:.1} | {} | {} | {} | `{}` | `{}:{}` |",
+            grade.icon(),
+            e.crap,
+            delta_display(de),
+            e.cyclomatic as usize,
+            cov,
+            e.function,
+            e.file.display(),
+            e.line,
+        )?;
+    }
+
+    if !report.removed.is_empty() {
+        write_markdown_removed(&report.removed, out)?;
+    }
+
+    writeln!(out)?;
+    let regressed = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Regressed)
+        .count();
+    let improved = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Improved)
+        .count();
+    let new = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::New)
+        .count();
+    let unchanged = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Unchanged)
+        .count();
+    writeln!(
+        out,
+        "↑ {regressed} regressed · ↓ {improved} improved · ★ {new} new · · {unchanged} unchanged · — {} removed",
+        report.removed.len(),
+    )?;
+    Ok(())
+}
+
+// ─── Summary-only rendering ──────────────────────────────────────────────────
+
+/// Print only aggregate statistics — no per-function table.
+///
+/// ```text
+/// Analyzed: 42 · Crappy: 3 (threshold 30) · Worst: crappy (CRAP 156.0)
+/// ```
+pub fn render_summary(
+    entries: &[CrapEntry],
+    threshold: f64,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let total = entries.len();
+    let crappy = crappy_count(entries, threshold);
+    // entries are already sorted descending by CRAP score by merge::merge.
+    let worst = entries.first();
+
+    if crappy == 0 {
+        writeln!(
+            out,
+            "{} Analyzed: {} · Crappy: 0 (threshold {})",
+            "✓".green(),
+            total,
+            threshold,
+        )?;
+    } else {
+        let worst_str = worst
+            .map(|e| format!(" · Worst: {} (CRAP {:.1})", e.function, e.crap))
+            .unwrap_or_default();
+        writeln!(
+            out,
+            "{} Analyzed: {} · Crappy: {} (threshold {}){worst_str}",
+            "✗".red(),
+            total,
+            crappy,
+            threshold,
+        )?;
+    }
+    Ok(())
+}
+
+/// Print only aggregate delta statistics — no per-function table.
+pub fn render_delta_summary(
+    report: &DeltaReport,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let regressed = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Regressed)
+        .count();
+    let improved = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Improved)
+        .count();
+    let new = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::New)
+        .count();
+    let unchanged = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Unchanged)
+        .count();
+    writeln!(
+        out,
+        "{}  {}  {}  {}  {}",
+        format!("↑ {regressed} regressed").red(),
+        format!("↓ {improved} improved").green(),
+        format!("★ {new} new").yellow(),
+        format!("· {unchanged} unchanged").dimmed(),
+        format!("— {} removed", report.removed.len()).dimmed(),
+    )?;
+    Ok(())
+}
+
+// ─── Delta rendering ────────────────────────────────────────────────────────
+
+/// Render a [`DeltaReport`] in the requested format.
+///
+/// Human format: table with a Δ column + summary line.
+/// JSON format: `{"entries": [...], "removed": [...]}` object.
+/// GitHub format: `::warning` for regressed and new-crappy functions only.
+pub fn render_delta(
+    report: &DeltaReport,
+    threshold: f64,
+    format: Format,
+    out: &mut dyn Write,
+) -> Result<()> {
+    match format {
+        Format::Json => render_delta_json(report, out),
+        Format::Human => render_delta_human(report, threshold, out),
+        Format::GitHub => render_delta_github(report, threshold, out),
+        Format::Markdown => render_delta_markdown(report, threshold, out),
+    }
+}
+
+fn render_delta_json(
+    report: &DeltaReport,
+    out: &mut dyn Write,
+) -> Result<()> {
+    #[derive(serde::Serialize)]
+    struct DeltaOutput<'a> {
+        entries: &'a [DeltaEntry],
+        removed: &'a [crate::delta::RemovedEntry],
+    }
+    serde_json::to_writer_pretty(
+        &mut *out,
+        &DeltaOutput {
+            entries: &report.entries,
+            removed: &report.removed,
+        },
+    )?;
+    out.write_all(b"\n")?;
+    Ok(())
+}
+
+fn render_delta_github(
+    report: &DeltaReport,
+    threshold: f64,
+    out: &mut dyn Write,
+) -> Result<()> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+
+    for de in &report.entries {
+        let e = &de.current;
+        // Annotate regressions and new functions above threshold.
+        let should_warn = match de.status {
+            DeltaStatus::Regressed => true,
+            DeltaStatus::New => e.crap > threshold,
+            _ => false,
+        };
+        if !should_warn {
+            continue;
+        }
+
+        let file = e.file.strip_prefix(&cwd).unwrap_or(&e.file);
+        let delta_str = match de.delta {
+            Some(d) => format!(" (Δ{:+.1})", d),
+            None => " (new)".to_string(),
+        };
+        let cov_str = e.coverage.map_or("—".into(), |c| format!("{c:.1}%"));
+        let message = format!(
+            "{fn_name} CRAP={crap:.1}{delta} CC={cc} cov={cov}",
+            fn_name = e.function,
+            crap = e.crap,
+            delta = delta_str,
+            cc = e.cyclomatic as usize,
+            cov = cov_str,
+        );
+        writeln!(
+            out,
+            "::warning file={file},line={line},title=CRAP ({crap:.1})::{msg}",
+            file = file.display(),
+            line = e.line,
+            crap = e.crap,
+            msg = gha_escape(&message),
+        )?;
+    }
+    Ok(())
+}
+
+fn render_delta_human(
+    report: &DeltaReport,
+    threshold: f64,
+    out: &mut dyn Write,
+) -> Result<()> {
+    if report.entries.is_empty() && report.removed.is_empty() {
+        writeln!(out, "No functions found.")?;
+        return Ok(());
+    }
+
+    if !report.entries.is_empty() {
+        let table = build_delta_table(&report.entries, threshold);
+        writeln!(out, "{table}")?;
+    }
+
+    // Removed functions section.
+    if !report.removed.is_empty() {
+        writeln!(out, "Removed since baseline:")?;
+        for r in &report.removed {
+            writeln!(
+                out,
+                "  {}  {} (was {:.1})",
+                "—".dimmed(),
+                r.function,
+                r.baseline_crap
+            )?;
+        }
+    }
+
+    write_delta_summary(out, report)
+}
+
+fn build_delta_table(
+    entries: &[DeltaEntry],
+    threshold: f64,
+) -> Table {
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL);
+    table.set_header(vec![
+        Cell::new("").add_attribute(Attribute::Bold),
+        Cell::new("CRAP").add_attribute(Attribute::Bold),
+        Cell::new("Δ").add_attribute(Attribute::Bold),
+        Cell::new("CC").add_attribute(Attribute::Bold),
+        Cell::new("Coverage").add_attribute(Attribute::Bold),
+        Cell::new("Function").add_attribute(Attribute::Bold),
+        Cell::new("Location").add_attribute(Attribute::Bold),
+    ]);
+    table
+        .column_mut(1)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Right);
+    table
+        .column_mut(2)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Right);
+    table
+        .column_mut(3)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Right);
+    for de in entries {
+        table.add_row(build_delta_row(de, threshold));
+    }
+    table
+}
+
+fn build_delta_row(
+    de: &DeltaEntry,
+    threshold: f64,
+) -> Vec<Cell> {
+    let e = &de.current;
+    let grade = Grade::of(e.crap, threshold);
+    let color = grade.color();
+
+    let delta_text = delta_display(de);
+    let delta_cell = match de.status {
+        DeltaStatus::Regressed => Cell::new(delta_text).fg(Color::Red),
+        DeltaStatus::Improved => Cell::new(delta_text).fg(Color::Green),
+        DeltaStatus::New => Cell::new(delta_text).fg(Color::Yellow),
+        DeltaStatus::Unchanged => Cell::new(delta_text),
+    };
+
+    vec![
+        Cell::new(grade.icon()).fg(color),
+        Cell::new(format!("{:.1}", e.crap)).fg(color),
+        delta_cell,
+        Cell::new(e.cyclomatic as usize),
+        Cell::new(coverage_bar(e.coverage)),
+        Cell::new(&e.function),
+        Cell::new(format!("{}:{}", e.file.display(), e.line)),
+    ]
+}
+
+fn write_delta_summary(
+    out: &mut dyn Write,
+    report: &DeltaReport,
+) -> Result<()> {
+    let regressed = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Regressed)
+        .count();
+    let improved = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Improved)
+        .count();
+    let new = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::New)
+        .count();
+    let unchanged = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Unchanged)
+        .count();
+    let removed = report.removed.len();
+
+    writeln!(
+        out,
+        "{}  {}  {}  {}  {}",
+        format!("↑ {regressed} regressed").red(),
+        format!("↓ {improved} improved").green(),
+        format!("★ {new} new").yellow(),
+        format!("· {unchanged} unchanged").dimmed(),
+        format!("— {removed} removed").dimmed(),
+    )?;
+    Ok(())
+}
+
+// ─── Baseline count helpers ─────────────────────────────────────────────────
 
 /// How many entries exceed the threshold — used by the CLI to decide the
 /// process exit code.

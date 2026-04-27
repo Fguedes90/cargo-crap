@@ -1,0 +1,284 @@
+//! Delta comparison between two cargo-crap runs.
+//!
+//! Load a previous run's JSON output with [`load_baseline`], then call
+//! [`compute_delta`] to get per-function change status.
+//!
+//! ## Typical CI workflow
+//!
+//! ```text
+//! # On main branch — save baseline
+//! cargo crap --lcov lcov.info --format json --output baseline.json
+//!
+//! # On a PR branch — compare and fail on regressions
+//! cargo crap --lcov lcov.info --baseline baseline.json --fail-regression
+//! ```
+
+use crate::merge::CrapEntry;
+use anyhow::{Context, Result};
+use serde::Serialize;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+/// How much a CRAP score must change before it is called a regression or
+/// improvement. Avoids noise from floating-point rounding between runs.
+const EPSILON: f64 = 0.01;
+
+/// Change status of a single function relative to the baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeltaStatus {
+    /// Score increased by more than [`EPSILON`] — needs attention.
+    Regressed,
+    /// Score decreased by more than [`EPSILON`] — improved since baseline.
+    Improved,
+    /// Function was not present in the baseline (e.g. newly added code).
+    New,
+    /// Score changed by ≤ [`EPSILON`] — effectively unchanged.
+    Unchanged,
+}
+
+/// One function from the current run, annotated with its change since the baseline.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeltaEntry {
+    #[serde(flatten)]
+    pub current: CrapEntry,
+    /// The CRAP score from the baseline run; `None` when this function is new.
+    pub baseline_crap: Option<f64>,
+    /// `current.crap − baseline_crap`; `None` when this function is new.
+    pub delta: Option<f64>,
+    pub status: DeltaStatus,
+}
+
+/// A function present in the baseline but absent in the current run.
+#[derive(Debug, Clone, Serialize)]
+pub struct RemovedEntry {
+    pub function: String,
+    pub file: PathBuf,
+    pub baseline_crap: f64,
+}
+
+/// The full comparison result.
+#[derive(Debug)]
+pub struct DeltaReport {
+    /// All functions from the current run, each annotated with its delta.
+    pub entries: Vec<DeltaEntry>,
+    /// Functions that existed in the baseline but are gone in the current run.
+    pub removed: Vec<RemovedEntry>,
+}
+
+impl DeltaReport {
+    /// Number of functions whose CRAP score increased since the baseline.
+    pub fn regression_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| e.status == DeltaStatus::Regressed)
+            .count()
+    }
+}
+
+/// Load a JSON baseline produced by a previous `cargo crap --format json` run.
+pub fn load_baseline(path: &Path) -> Result<Vec<CrapEntry>> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("reading baseline {}", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| {
+        format!(
+            "parsing baseline {} — must be JSON from `cargo crap --format json`",
+            path.display()
+        )
+    })
+}
+
+/// Join current results against a baseline and compute per-function deltas.
+///
+/// **Join key**: exact `(file_path, function_name)` pair. This is reliable
+/// when both runs use the same checkout path (local dev, or CI with a fixed
+/// `GITHUB_WORKSPACE`). Functions with no matching baseline entry are marked
+/// [`DeltaStatus::New`]; baseline functions absent in the current run become
+/// [`RemovedEntry`]s.
+pub fn compute_delta(
+    current: &[CrapEntry],
+    baseline: &[CrapEntry],
+) -> DeltaReport {
+    let baseline_index: HashMap<(String, String), f64> = baseline
+        .iter()
+        .map(|e| {
+            (
+                (e.file.to_string_lossy().into_owned(), e.function.clone()),
+                e.crap,
+            )
+        })
+        .collect();
+
+    let mut matched: HashSet<(String, String)> = HashSet::new();
+
+    let entries: Vec<DeltaEntry> = current
+        .iter()
+        .map(|e| {
+            let key = (e.file.to_string_lossy().into_owned(), e.function.clone());
+            let baseline_crap = baseline_index.get(&key).copied();
+            if baseline_crap.is_some() {
+                matched.insert(key);
+            }
+
+            let (delta, status) = match baseline_crap {
+                None => (None, DeltaStatus::New),
+                Some(b) => {
+                    let d = e.crap - b;
+                    let status = if d > EPSILON {
+                        DeltaStatus::Regressed
+                    } else if d < -EPSILON {
+                        DeltaStatus::Improved
+                    } else {
+                        DeltaStatus::Unchanged
+                    };
+                    (Some(d), status)
+                },
+            };
+
+            DeltaEntry {
+                current: e.clone(),
+                baseline_crap,
+                delta,
+                status,
+            }
+        })
+        .collect();
+
+    let removed: Vec<RemovedEntry> = baseline
+        .iter()
+        .filter(|e| {
+            let key = (e.file.to_string_lossy().into_owned(), e.function.clone());
+            !matched.contains(&key)
+        })
+        .map(|e| RemovedEntry {
+            function: e.function.clone(),
+            file: e.file.clone(),
+            baseline_crap: e.crap,
+        })
+        .collect();
+
+    DeltaReport { entries, removed }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn entry(
+        function: &str,
+        crap: f64,
+    ) -> CrapEntry {
+        CrapEntry {
+            file: PathBuf::from("src/lib.rs"),
+            function: function.to_string(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap,
+        }
+    }
+
+    #[test]
+    fn new_when_not_in_baseline() {
+        let report = compute_delta(&[entry("foo", 5.0)], &[]);
+        assert_eq!(report.entries[0].status, DeltaStatus::New);
+        assert!(report.entries[0].baseline_crap.is_none());
+        assert!(report.entries[0].delta.is_none());
+    }
+
+    #[test]
+    fn regressed_when_score_increased() {
+        let report = compute_delta(&[entry("foo", 10.0)], &[entry("foo", 5.0)]);
+        assert_eq!(report.entries[0].status, DeltaStatus::Regressed);
+        assert_eq!(report.entries[0].baseline_crap, Some(5.0));
+        assert!((report.entries[0].delta.unwrap() - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn improved_when_score_decreased() {
+        let report = compute_delta(&[entry("foo", 3.0)], &[entry("foo", 8.0)]);
+        assert_eq!(report.entries[0].status, DeltaStatus::Improved);
+        assert!((report.entries[0].delta.unwrap() + 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn unchanged_within_epsilon() {
+        let report = compute_delta(&[entry("foo", 5.005)], &[entry("foo", 5.0)]);
+        assert_eq!(report.entries[0].status, DeltaStatus::Unchanged);
+    }
+
+    #[test]
+    fn epsilon_boundary_regression_is_exclusive() {
+        // delta = exactly EPSILON must be Unchanged, not Regressed.
+        // Kills: replacing `>` with `>=` in the Regressed branch.
+        //
+        // Use baseline=0.0 so `current - 0.0 == EPSILON` exactly in floating
+        // point. Using `5.0 + EPSILON - 5.0` causes catastrophic cancellation
+        // that yields a value slightly below EPSILON, making the `>=` mutant
+        // indistinguishable from the original `>`.
+        let report = compute_delta(&[entry("foo", EPSILON)], &[entry("foo", 0.0)]);
+        assert_eq!(
+            report.entries[0].status,
+            DeltaStatus::Unchanged,
+            "delta == EPSILON must be Unchanged, not Regressed"
+        );
+    }
+
+    #[test]
+    fn above_epsilon_is_regressed() {
+        // delta strictly above EPSILON must be Regressed.
+        // Paired with the boundary test to pin both sides of the comparison.
+        let report = compute_delta(&[entry("foo", EPSILON + 0.001)], &[entry("foo", 0.0)]);
+        assert_eq!(report.entries[0].status, DeltaStatus::Regressed);
+    }
+
+    #[test]
+    fn epsilon_boundary_improvement_is_exclusive() {
+        // delta = exactly -EPSILON must be Unchanged, not Improved.
+        // Kills: replacing `<` with `<=` in the Improved branch.
+        // Same zero-baseline trick to guarantee exact floating-point equality.
+        let report = compute_delta(&[entry("foo", 0.0)], &[entry("foo", EPSILON)]);
+        assert_eq!(
+            report.entries[0].status,
+            DeltaStatus::Unchanged,
+            "delta == -EPSILON must be Unchanged, not Improved"
+        );
+    }
+
+    #[test]
+    fn below_negative_epsilon_is_improved() {
+        // delta strictly below -EPSILON must be Improved.
+        // Paired with the boundary test to pin both sides.
+        let report = compute_delta(&[entry("foo", 0.0)], &[entry("foo", EPSILON + 0.001)]);
+        assert_eq!(report.entries[0].status, DeltaStatus::Improved);
+    }
+
+    #[test]
+    fn removed_entries_identified() {
+        let report = compute_delta(
+            &[entry("bar", 2.0)],
+            &[entry("foo", 5.0), entry("bar", 2.0)],
+        );
+        assert_eq!(report.removed.len(), 1);
+        assert_eq!(report.removed[0].function, "foo");
+        assert_eq!(report.removed[0].baseline_crap, 5.0);
+    }
+
+    #[test]
+    fn regression_count_is_accurate() {
+        let current = vec![entry("foo", 10.0), entry("bar", 2.0), entry("baz", 1.0)];
+        let baseline = vec![entry("foo", 5.0), entry("bar", 8.0)];
+        // foo: regressed(+5), bar: improved(-6), baz: new
+        let report = compute_delta(&current, &baseline);
+        assert_eq!(report.regression_count(), 1);
+    }
+
+    #[test]
+    fn empty_baseline_marks_everything_new() {
+        let current = vec![entry("a", 1.0), entry("b", 2.0)];
+        let report = compute_delta(&current, &[]);
+        assert!(report.entries.iter().all(|e| e.status == DeltaStatus::New));
+        assert!(report.removed.is_empty());
+    }
+}

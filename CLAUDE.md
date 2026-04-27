@@ -28,12 +28,12 @@ cargo clippy --all-targets -- -D warnings
 
 # Run the tool against this repo (dogfood)
 cargo llvm-cov --lcov --output-path lcov.info --workspace
-cargo run --release -- --lcov lcov.info --threshold 30 --fail-above
+cargo run --release -- --lcov lcov.info --workspace --exclude 'tests/fixtures/**' --threshold 15 --fail-above
 ```
 
 ## Architecture
 
-The tool has four orthogonal modules that feed into a pipeline:
+The tool has six orthogonal modules that feed into a pipeline:
 
 ```
 syn (Rust AST)                          LCOV file (cargo llvm-cov / tarpaulin)
@@ -49,9 +49,11 @@ syn (Rust AST)                          LCOV file (cargo llvm-cov / tarpaulin)
                   src/merge.rs           ← path normalization lives here
                   Vec<CrapEntry>
                         │
+                        ├──────────────▶ src/delta.rs  (optional --baseline)
+                        │               DeltaReport { entries, removed }
                         ▼
                   src/report.rs
-                  (human table or JSON)
+                  (human / JSON / GitHub / Markdown)
 ```
 
 **`src/score.rs`** — Pure formula: `CRAP(m) = comp(m)² × (1 − cov(m)/100)³ + comp(m)`. No I/O, no dependencies on other modules.
@@ -65,7 +67,13 @@ syn (Rust AST)                          LCOV file (cargo llvm-cov / tarpaulin)
 - **Slow path**: component-wise suffix matching for relative LCOV paths (e.g., `src/foo.rs` matches `/home/alice/project/src/foo.rs`).
 - **Critical invariant**: relative paths are never canonicalized against CWD (regression test `relative_coverage_paths_are_not_resolved_against_cwd` pins this).
 
-**`src/main.rs`** — CLI via `clap`. Handles the `cargo crap` subcommand invocation by stripping the leading `crap` argument when detected.
+**`src/delta.rs`** — Baseline comparison. `load_baseline` deserializes a previous `--format json` run; `compute_delta` joins current `CrapEntry` list against it by `(file, function)` key, producing `DeltaStatus` (Regressed / Improved / New / Unchanged) and a `removed` list for functions gone since the baseline.
+
+**`src/config.rs`** — Optional `.cargo-crap.toml` loader. Walks up from CWD until the file is found; returns `Config::default()` if absent. Uses `#[serde(deny_unknown_fields)]` to catch typos. CLI flags always override config values.
+
+**`src/report.rs`** — Renders `Vec<CrapEntry>` or `DeltaReport` in four formats: human (colored Unicode table), JSON (serde), GitHub Actions (`::warning` annotations), and Markdown (GFM table). `render_summary` / `render_delta_summary` print aggregate-only output when `--summary` is set.
+
+**`src/main.rs`** — CLI via `clap`. Handles the `cargo crap` subcommand invocation by stripping the leading `crap` argument when detected. Heavy logic is extracted into `validate_args`, `collect_complexity`, `apply_filters`, `load_coverage`, and `do_render` to keep `main` CC below 15.
 
 ## Key design decisions
 

@@ -51,6 +51,9 @@ pub struct Config {
     /// Example: `"Foo::*"` suppresses all methods on `Foo`.
     #[serde(default)]
     pub allow: Vec<String>,
+
+    /// Exit non-zero if any function regressed since `--baseline`.
+    pub fail_regression: Option<bool>,
 }
 
 /// Walk up from `start` until `.cargo-crap.toml` is found.

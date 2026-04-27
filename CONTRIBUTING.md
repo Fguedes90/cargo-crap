@@ -20,7 +20,7 @@ cargo clippy --all-targets -- -D warnings
 
 ```bash
 cargo llvm-cov --lcov --output-path lcov.info --workspace
-cargo run --release -- --lcov lcov.info --threshold 30
+cargo run --release -- --lcov lcov.info --workspace --exclude 'tests/fixtures/**' --threshold 15 --fail-above
 ```
 
 ## Adding a test
