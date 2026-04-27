@@ -27,6 +27,26 @@ A few properties worth internalizing before you use the output:
 
 ## Install
 
+**Pre-built binary** (fastest — no compilation):
+
+```bash
+# macOS / Linux
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/minikin/cargo-crap/releases/latest/download/cargo-crap-aarch64-apple-darwin.tar.gz \
+  | tar xz -C ~/.cargo/bin
+```
+
+Pre-built archives for all platforms are attached to every [GitHub release](https://github.com/minikin/cargo-crap/releases):
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`.
+
+**Via `cargo binstall`** (downloads the right binary for your platform automatically):
+
+```bash
+cargo binstall cargo-crap
+```
+
+**From source** (requires Rust stable ≥ 1.85):
+
 ```bash
 cargo install cargo-crap
 ```
