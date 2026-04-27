@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           BIN="target/${{ matrix.target }}/release/cargo-crap"
-          ARCHIVE="cargo-crap-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          ARCHIVE="cargo-crap-${{ matrix.target }}.tar.gz"
           tar czf "$ARCHIVE" -C "$(dirname "$BIN")" "$(basename "$BIN")"
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
 
@@ -65,7 +65,7 @@ jobs:
         shell: pwsh
         run: |
           $bin     = "target\${{ matrix.target }}\release\cargo-crap.exe"
-          $archive = "cargo-crap-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          $archive = "cargo-crap-${{ matrix.target }}.zip"
           Compress-Archive -Path $bin -DestinationPath $archive
           "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
 
