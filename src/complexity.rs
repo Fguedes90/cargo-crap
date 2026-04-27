@@ -297,12 +297,11 @@ pub fn analyze_tree<S: AsRef<str>>(
                 if entry.path().extension().and_then(|e| e.to_str()) != Some("rs") {
                     return None;
                 }
-                if !exclude_set.is_empty() {
-                    if let Ok(rel) = entry.path().strip_prefix(root) {
-                        if exclude_set.is_match(rel) {
-                            return None;
-                        }
-                    }
+                if !exclude_set.is_empty()
+                    && let Ok(rel) = entry.path().strip_prefix(root)
+                    && exclude_set.is_match(rel)
+                {
+                    return None;
                 }
                 Some(entry.path().to_path_buf())
             })

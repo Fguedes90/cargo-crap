@@ -82,12 +82,12 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
                 files.entry(sf_path).or_default();
             },
             Record::LineData { line, count, .. } => {
-                if let Some(ref p) = current_path {
-                    if let Some(fc) = files.get_mut(p) {
-                        // LCOV files can legitimately repeat a line in
-                        // different branches; sum the hits.
-                        *fc.lines.entry(line).or_insert(0) += count;
-                    }
+                if let Some(ref p) = current_path
+                    && let Some(fc) = files.get_mut(p)
+                {
+                    // LCOV files can legitimately repeat a line in
+                    // different branches; sum the hits.
+                    *fc.lines.entry(line).or_insert(0) += count;
                 }
             },
             Record::EndOfRecord => {

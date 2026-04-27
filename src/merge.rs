@@ -156,10 +156,10 @@ impl<'a> PathIndex<'a> {
         query: &Path,
     ) -> Option<&'a FileCoverage> {
         // Fast path: direct canonical match.
-        if let Ok(abs) = query.canonicalize() {
-            if let Some(cov) = self.by_absolute.get(&abs) {
-                return Some(*cov);
-            }
+        if let Ok(abs) = query.canonicalize()
+            && let Some(cov) = self.by_absolute.get(&abs)
+        {
+            return Some(*cov);
         }
 
         // Slow path: suffix match. A coverage path `src/foo.rs` matches a
