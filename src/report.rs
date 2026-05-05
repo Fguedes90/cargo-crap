@@ -14,6 +14,85 @@ use std::path::{Path, PathBuf};
 /// the comment stays under GitHub's 65,536-character body limit on huge PRs.
 const MAX_ROWS_PER_SECTION: usize = 25;
 
+/// Repo URL + commit ref used by `markdown` / `pr-comment` renderers to wrap
+/// Function and Location cells in clickable source links.
+///
+/// Constructed once at the CLI layer (or by library callers) and threaded
+/// through as `Option<&SourceLinks>` — `None` means "no flags set, render
+/// plain code spans like before".
+#[derive(Clone, Debug)]
+pub struct SourceLinks {
+    repo_url: String,
+    commit_ref: String,
+}
+
+impl SourceLinks {
+    /// Trims a trailing `/` off `repo_url` so URL composition produces exactly
+    /// one slash between the base and `/blob/...`.
+    pub fn new(
+        repo_url: String,
+        commit_ref: String,
+    ) -> Self {
+        Self {
+            repo_url: repo_url.trim_end_matches('/').to_string(),
+            commit_ref,
+        }
+    }
+
+    /// Build a deep link to `file` at `line` on the configured ref.
+    ///
+    /// GitHub URLs require forward slashes regardless of host OS. On
+    /// Windows `Path::display()` emits `src\foo.rs`, which would land in
+    /// the URL verbatim and 404 on github.com — so we normalize backslashes
+    /// to forward slashes before composing the URL.
+    pub fn url_for(
+        &self,
+        file: &Path,
+        line: usize,
+    ) -> String {
+        let path = file.to_string_lossy().replace('\\', "/");
+        format!(
+            "{}/blob/{}/{}#L{}",
+            self.repo_url, self.commit_ref, path, line
+        )
+    }
+}
+
+/// Decide what path to embed into a `/blob/<ref>/...` URL for `path`.
+///
+/// The URL prefix is **always the repo root (== CWD)**, never the LCP used
+/// for the visible Location text. If we shared the LCP, a rendered set that
+/// happens to live entirely under `src/` would strip `src/` from the URL
+/// too, yielding `host/repo/blob/<sha>/main.rs` which 404s.
+///
+/// Returns the repo-relative form when `path` is already relative (cargo
+/// crap reports relative paths when not invoked with `--workspace`) or
+/// absolute under CWD. Returns `None` otherwise — those rows fall back to
+/// plain code spans rather than emit a broken
+/// `host/repo/blob/<sha>//abs/...` URL.
+fn link_path(path: &Path) -> Option<PathBuf> {
+    if path.is_relative() {
+        return Some(path.to_path_buf());
+    }
+    let cwd = std::env::current_dir().ok()?;
+    path.strip_prefix(&cwd).ok().map(|p| p.to_path_buf())
+}
+
+/// Wrap `inner` (already-formatted, e.g. with backticks) in a markdown link
+/// iff both `links` and a usable (repo-relative) URL path are available;
+/// otherwise return `inner` unchanged.
+fn linkify(
+    inner: String,
+    links: Option<&SourceLinks>,
+    file: &Path,
+    line: usize,
+) -> String {
+    match (links, link_path(file)) {
+        (Some(l), Some(p)) => format!("[{inner}]({})", l.url_for(&p, line)),
+        _ => inner,
+    }
+}
+
 /// Three-tier severity used for row icons and colour.
 ///
 /// `Moderate` sits between `threshold / 3` and `threshold` — a visible warning
@@ -107,14 +186,15 @@ pub fn render(
     entries: &[CrapEntry],
     threshold: f64,
     format: Format,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     match format {
         Format::Json => render_json(entries, out),
         Format::Human => render_human(entries, threshold, out),
         Format::GitHub => render_github(entries, threshold, out),
-        Format::Markdown => render_markdown(entries, threshold, out),
-        Format::PrComment => render_pr_comment(entries, threshold, out),
+        Format::Markdown => render_markdown(entries, threshold, links, out),
+        Format::PrComment => render_pr_comment(entries, threshold, links, out),
     }
 }
 
@@ -467,6 +547,7 @@ fn write_markdown_absolute_summary(
 fn write_markdown_entries_table(
     entries: &[CrapEntry],
     threshold: f64,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     writeln!(out, "| | CRAP | CC | Cov % | Function | Location |")?;
@@ -477,16 +558,27 @@ fn write_markdown_entries_table(
             Some(p) => format!("{p:.1}"),
             None => "—".to_string(),
         };
+        let func = linkify(
+            format!("`{}`", entry.function),
+            links,
+            &entry.file,
+            entry.line,
+        );
+        let loc = linkify(
+            format!("`{}:{}`", entry.file.display(), entry.line),
+            links,
+            &entry.file,
+            entry.line,
+        );
         writeln!(
             out,
-            "| {} | {:.1} | {} | {} | `{}` | `{}:{}` |",
+            "| {} | {:.1} | {} | {} | {} | {} |",
             grade.icon(),
             entry.crap,
             entry.cyclomatic as usize,
             cov,
-            entry.function,
-            entry.file.display(),
-            entry.line,
+            func,
+            loc,
         )?;
     }
     Ok(())
@@ -497,6 +589,7 @@ fn write_markdown_entries_table(
 fn render_markdown(
     entries: &[CrapEntry],
     threshold: f64,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     write_pr_comment_marker(out)?;
@@ -507,7 +600,7 @@ fn render_markdown(
     let crappy = crappy_count(entries, threshold);
     write_markdown_absolute_heading(crappy, threshold, out)?;
     write_per_crate_markdown(entries, threshold, out)?;
-    write_markdown_entries_table(entries, threshold, out)?;
+    write_markdown_entries_table(entries, threshold, links, out)?;
     write_markdown_absolute_summary(crappy, entries.len(), threshold, out)
 }
 
@@ -553,6 +646,7 @@ fn write_markdown_delta_heading(
 fn write_delta_entries_table(
     entries: &[crate::delta::DeltaEntry],
     threshold: f64,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     writeln!(out, "| | CRAP | Δ | CC | Cov % | Function | Location |")?;
@@ -561,17 +655,23 @@ fn write_delta_entries_table(
         let e = &de.current;
         let grade = Grade::of(e.crap, threshold);
         let cov = e.coverage.map_or("—".to_string(), |p| format!("{p:.1}"));
+        let func = linkify(format!("`{}`", e.function), links, &e.file, e.line);
+        let loc = linkify(
+            format!("`{}:{}`", e.file.display(), e.line),
+            links,
+            &e.file,
+            e.line,
+        );
         writeln!(
             out,
-            "| {} | {:.1} | {} | {} | {} | `{}` | `{}:{}` |",
+            "| {} | {:.1} | {} | {} | {} | {} | {} |",
             grade.icon(),
             e.crap,
             delta_display(de),
             e.cyclomatic as usize,
             cov,
-            e.function,
-            e.file.display(),
-            e.line,
+            func,
+            loc,
         )?;
     }
     Ok(())
@@ -613,6 +713,7 @@ fn write_markdown_delta_stats(
 fn render_delta_markdown(
     report: &DeltaReport,
     threshold: f64,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     write_pr_comment_marker(out)?;
@@ -621,7 +722,7 @@ fn render_delta_markdown(
         return Ok(());
     }
     write_markdown_delta_heading(report.regression_count(), out)?;
-    write_delta_entries_table(&report.entries, threshold, out)?;
+    write_delta_entries_table(&report.entries, threshold, links, out)?;
     if !report.removed.is_empty() {
         write_markdown_removed(&report.removed, out)?;
     }
@@ -696,22 +797,24 @@ fn write_pr_comment_row(
     de: &DeltaEntry,
     threshold: f64,
     prefix: &Path,
+    links: Option<&SourceLinks>,
 ) -> Result<()> {
     let e = &de.current;
     let grade = Grade::of(e.crap, threshold);
     let cov = e.coverage.map_or("—".to_string(), |p| format!("{p:.1}"));
-    let loc = strip_to_display(&e.file, prefix);
+    let loc_text = strip_to_display(&e.file, prefix);
+    let func = linkify(format!("`{}`", e.function), links, &e.file, e.line);
+    let loc = linkify(format!("`{loc_text}:{}`", e.line), links, &e.file, e.line);
     writeln!(
         out,
-        "| {} | {:.1} | {} | {} | {} | `{}` | `{}:{}` |",
+        "| {} | {:.1} | {} | {} | {} | {} | {} |",
         grade.icon(),
         e.crap,
         delta_display(de),
         e.cyclomatic as usize,
         cov,
-        e.function,
+        func,
         loc,
-        e.line,
     )?;
     Ok(())
 }
@@ -722,20 +825,22 @@ fn write_pr_comment_abs_row(
     e: &CrapEntry,
     threshold: f64,
     prefix: &Path,
+    links: Option<&SourceLinks>,
 ) -> Result<()> {
     let grade = Grade::of(e.crap, threshold);
     let cov = e.coverage.map_or("—".to_string(), |p| format!("{p:.1}"));
-    let loc = strip_to_display(&e.file, prefix);
+    let loc_text = strip_to_display(&e.file, prefix);
+    let func = linkify(format!("`{}`", e.function), links, &e.file, e.line);
+    let loc = linkify(format!("`{loc_text}:{}`", e.line), links, &e.file, e.line);
     writeln!(
         out,
-        "| {} | {:.1} | {} | {} | `{}` | `{}:{}` |",
+        "| {} | {:.1} | {} | {} | {} | {} |",
         grade.icon(),
         e.crap,
         e.cyclomatic as usize,
         cov,
-        e.function,
+        func,
         loc,
-        e.line,
     )?;
     Ok(())
 }
@@ -878,6 +983,7 @@ fn write_pr_comment_primary(
     b: &DeltaBuckets,
     threshold: f64,
     prefix: &Path,
+    links: Option<&SourceLinks>,
 ) -> Result<()> {
     let total = b.regressed.len() + b.new_entries.len();
     if total == 0 {
@@ -892,7 +998,7 @@ fn write_pr_comment_primary(
         .chain(b.new_entries.iter())
         .take(MAX_ROWS_PER_SECTION)
     {
-        write_pr_comment_row(out, de, threshold, prefix)?;
+        write_pr_comment_row(out, de, threshold, prefix, links)?;
     }
     write_truncation_if_capped(out, total)
 }
@@ -902,6 +1008,7 @@ fn write_pr_comment_improved_section(
     b: &DeltaBuckets,
     threshold: f64,
     prefix: &Path,
+    links: Option<&SourceLinks>,
 ) -> Result<()> {
     if b.improved.is_empty() {
         return Ok(());
@@ -916,7 +1023,7 @@ fn write_pr_comment_improved_section(
     writeln!(out, "| | CRAP | Δ | CC | Cov % | Function | Location |")?;
     writeln!(out, "|---|---:|---:|---:|---:|---|---|")?;
     for de in b.improved.iter().take(MAX_ROWS_PER_SECTION) {
-        write_pr_comment_row(out, de, threshold, prefix)?;
+        write_pr_comment_row(out, de, threshold, prefix, links)?;
     }
     write_truncation_if_capped(out, b.improved.len())?;
     writeln!(out)?;
@@ -929,6 +1036,7 @@ fn write_pr_comment_hot_spots_section(
     b: &DeltaBuckets,
     threshold: f64,
     prefix: &Path,
+    links: Option<&SourceLinks>,
 ) -> Result<()> {
     if b.hot_spots.is_empty() {
         return Ok(());
@@ -942,7 +1050,7 @@ fn write_pr_comment_hot_spots_section(
     writeln!(out, "| | CRAP | CC | Cov % | Function | Location |")?;
     writeln!(out, "|---|---:|---:|---:|---|---|")?;
     for de in b.hot_spots.iter().take(MAX_ROWS_PER_SECTION) {
-        write_pr_comment_abs_row(out, &de.current, threshold, prefix)?;
+        write_pr_comment_abs_row(out, &de.current, threshold, prefix, links)?;
     }
     write_truncation_if_capped(out, b.hot_spots.len())?;
     writeln!(out)?;
@@ -990,6 +1098,7 @@ fn unchanged_count(report: &DeltaReport) -> usize {
 fn render_delta_pr_comment(
     report: &DeltaReport,
     threshold: f64,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     write_pr_comment_marker(out)?;
@@ -1001,9 +1110,9 @@ fn render_delta_pr_comment(
     let prefix = buckets.common_prefix();
     write_pr_comment_delta_headline(out, buckets.regressed.len())?;
     write_pr_comment_breakdown(out, &buckets, unchanged_count(report))?;
-    write_pr_comment_primary(out, &buckets, threshold, &prefix)?;
-    write_pr_comment_improved_section(out, &buckets, threshold, &prefix)?;
-    write_pr_comment_hot_spots_section(out, &buckets, threshold, &prefix)?;
+    write_pr_comment_primary(out, &buckets, threshold, &prefix, links)?;
+    write_pr_comment_improved_section(out, &buckets, threshold, &prefix, links)?;
+    write_pr_comment_hot_spots_section(out, &buckets, threshold, &prefix, links)?;
     write_pr_comment_removed_section(out, &buckets, &prefix)
 }
 
@@ -1037,6 +1146,7 @@ fn write_pr_comment_abs_table(
     out: &mut dyn Write,
     above: &[&CrapEntry],
     threshold: f64,
+    links: Option<&SourceLinks>,
 ) -> Result<()> {
     if above.is_empty() {
         return Ok(());
@@ -1047,7 +1157,7 @@ fn write_pr_comment_abs_table(
     writeln!(out, "| | CRAP | CC | Cov % | Function | Location |")?;
     writeln!(out, "|---|---:|---:|---:|---|---|")?;
     for e in above.iter().take(MAX_ROWS_PER_SECTION) {
-        write_pr_comment_abs_row(out, e, threshold, &prefix)?;
+        write_pr_comment_abs_row(out, e, threshold, &prefix, links)?;
     }
     write_truncation_if_capped(out, above.len())
 }
@@ -1055,6 +1165,7 @@ fn write_pr_comment_abs_table(
 fn render_pr_comment(
     entries: &[CrapEntry],
     threshold: f64,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     write_pr_comment_marker(out)?;
@@ -1069,7 +1180,7 @@ fn render_pr_comment(
         entries.len()
     )?;
     let above = above_threshold_sorted(entries, threshold);
-    write_pr_comment_abs_table(out, &above, threshold)
+    write_pr_comment_abs_table(out, &above, threshold, links)
 }
 
 // ─── Summary-only rendering ──────────────────────────────────────────────────
@@ -1167,14 +1278,15 @@ pub fn render_delta(
     report: &DeltaReport,
     threshold: f64,
     format: Format,
+    links: Option<&SourceLinks>,
     out: &mut dyn Write,
 ) -> Result<()> {
     match format {
         Format::Json => render_delta_json(report, out),
         Format::Human => render_delta_human(report, threshold, out),
         Format::GitHub => render_delta_github(report, threshold, out),
-        Format::Markdown => render_delta_markdown(report, threshold, out),
-        Format::PrComment => render_delta_pr_comment(report, threshold, out),
+        Format::Markdown => render_delta_markdown(report, threshold, links, out),
+        Format::PrComment => render_delta_pr_comment(report, threshold, links, out),
     }
 }
 
@@ -1423,7 +1535,7 @@ mod tests {
     #[test]
     fn json_output_is_envelope_with_version_and_entries() {
         let mut buf = Vec::new();
-        render(&sample(), 30.0, Format::Json, &mut buf).unwrap();
+        render(&sample(), 30.0, Format::Json, None, &mut buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_slice(&buf).unwrap();
         assert!(parsed.is_object(), "JSON output must be an envelope object");
         assert_eq!(
@@ -1447,7 +1559,7 @@ mod tests {
     #[test]
     fn human_output_mentions_every_function() {
         let mut buf = Vec::new();
-        render(&sample(), 30.0, Format::Human, &mut buf).unwrap();
+        render(&sample(), 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("clean"));
         assert!(s.contains("crappy"));
@@ -1466,7 +1578,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&all_clean, 30.0, Format::Human, &mut buf).unwrap();
+        render(&all_clean, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.contains('✓'),
@@ -1486,7 +1598,7 @@ mod tests {
         // Note: ✓ appears in the row icon for the clean function, so we check
         // the summary count rather than the absence of ✓ in the full output.
         let mut buf = Vec::new();
-        render(&sample(), 30.0, Format::Human, &mut buf).unwrap();
+        render(&sample(), 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains('✗'), "output must show ✗ for crappy functions");
         assert!(s.contains("1/2"), "summary must report 1 out of 2 crappy");
@@ -1495,7 +1607,7 @@ mod tests {
     #[test]
     fn empty_entries_prints_no_functions_found() {
         let mut buf = Vec::new();
-        render(&[], 30.0, Format::Human, &mut buf).unwrap();
+        render(&[], 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("No functions found."));
     }
@@ -1513,7 +1625,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::Human, &mut buf).unwrap();
+        render(&entries, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains('—'), "None coverage must render as —");
     }
@@ -1531,7 +1643,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::Human, &mut buf).unwrap();
+        render(&entries, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("44.4"), "Some(44.4) must render as 44.4");
     }
@@ -1560,7 +1672,7 @@ mod tests {
             },
         ];
         let mut buf = Vec::new();
-        render(&both_crappy, 30.0, Format::Human, &mut buf).unwrap();
+        render(&both_crappy, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("2/2"), "both functions crappy, must report 2/2");
     }
@@ -1657,7 +1769,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::Human, &mut buf).unwrap();
+        render(&entries, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains('▲'), "moderate score must show ▲");
         assert!(!s.contains('✗'), "moderate score must not show ✗");
@@ -1669,7 +1781,7 @@ mod tests {
     fn github_format_emits_warning_for_crappy_function() {
         // Kills: missing the crappy-only guard (`entry.crap > threshold`).
         let mut buf = Vec::new();
-        render(&sample(), 30.0, Format::GitHub, &mut buf).unwrap();
+        render(&sample(), 30.0, Format::GitHub, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.contains("::warning"),
@@ -1686,7 +1798,7 @@ mod tests {
     fn github_format_clean_function_produces_no_annotation() {
         // Kills: emitting annotations for all functions regardless of threshold.
         let mut buf = Vec::new();
-        render(&sample(), 30.0, Format::GitHub, &mut buf).unwrap();
+        render(&sample(), 30.0, Format::GitHub, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         // "clean" (crap=1.0) is well below threshold=30 and must be silent.
         assert!(
@@ -1709,7 +1821,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&all_clean, 30.0, Format::GitHub, &mut buf).unwrap();
+        render(&all_clean, 30.0, Format::GitHub, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.is_empty(),
@@ -1730,7 +1842,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::GitHub, &mut buf).unwrap();
+        render(&entries, 30.0, Format::GitHub, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.contains("line=42"),
@@ -1842,7 +1954,7 @@ mod tests {
 
     fn render_delta_pr_to_string(report: &DeltaReport) -> String {
         let mut buf = Vec::new();
-        render_delta_pr_comment(report, 30.0, &mut buf).unwrap();
+        render_delta_pr_comment(report, 30.0, None, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
     }
 
@@ -2213,7 +2325,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::PrComment, &mut buf).unwrap();
+        render(&entries, 30.0, Format::PrComment, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.starts_with("<!-- cargo-crap-report -->"));
     }
@@ -2230,7 +2342,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::PrComment, &mut buf).unwrap();
+        render(&entries, 30.0, Format::PrComment, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("## ✅ No CRAP threshold violations"));
     }
@@ -2292,7 +2404,7 @@ mod tests {
             },
         ];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::PrComment, &mut buf).unwrap();
+        render(&entries, 30.0, Format::PrComment, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
 
         // Only `above` must appear in the table; the headline still shows it.
@@ -2322,7 +2434,7 @@ mod tests {
             crate_name: None,
         }];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::PrComment, &mut buf).unwrap();
+        render(&entries, 30.0, Format::PrComment, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.contains("`very_crappy`"),
@@ -2383,6 +2495,343 @@ mod tests {
         assert!(
             s.contains("· 3 unchanged ·"),
             "breakdown must report 3 unchanged, got:\n{s}"
+        );
+    }
+
+    // --- Source links (spec 12) --------------------------------------------
+
+    fn render_delta_pr_with_links(
+        report: &DeltaReport,
+        links: &SourceLinks,
+    ) -> String {
+        let mut buf = Vec::new();
+        render_delta_pr_comment(report, 30.0, Some(links), &mut buf).unwrap();
+        String::from_utf8(buf).unwrap()
+    }
+
+    #[test]
+    fn source_links_url_for_joins_components_with_one_slash() {
+        let l = SourceLinks::new("https://github.com/owner/repo".into(), "abc123".into());
+        let url = l.url_for(Path::new("src/foo.rs"), 42);
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/blob/abc123/src/foo.rs#L42"
+        );
+    }
+
+    #[test]
+    fn source_links_strips_trailing_slash_from_repo_url() {
+        let l = SourceLinks::new("https://github.com/owner/repo/".into(), "abc123".into());
+        let url = l.url_for(Path::new("src/foo.rs"), 1);
+        assert!(
+            !url.contains("repo//blob"),
+            "trailing slash must be normalized: {url}"
+        );
+        assert!(url.contains("/repo/blob/abc123/"));
+    }
+
+    #[test]
+    fn source_links_url_uses_forward_slashes_even_for_windows_input() {
+        // GitHub URLs always use `/`. A Windows-style backslash path must
+        // be normalized before it lands in the URL, otherwise links break
+        // on github.com regardless of which OS rendered them.
+        let l = SourceLinks::new("https://github.com/o/r".into(), "sha".into());
+        let url = l.url_for(Path::new(r"src\foo.rs"), 1);
+        assert!(
+            !url.contains('\\'),
+            "URL must contain no backslashes, got: {url}"
+        );
+        assert_eq!(url, "https://github.com/o/r/blob/sha/src/foo.rs#L1");
+    }
+
+    #[test]
+    fn pr_comment_no_links_when_links_arg_is_none() {
+        // Default rendering (None) must not contain markdown links — the
+        // table cells stay as plain code spans.
+        let report = DeltaReport {
+            entries: vec![delta_entry(
+                "src/a.rs",
+                "foo",
+                12.0,
+                Some(5.0),
+                DeltaStatus::Regressed,
+            )],
+            removed: vec![],
+        };
+        let s = render_delta_pr_to_string(&report);
+        assert!(
+            !s.contains("](https://"),
+            "no links expected when links arg is None:\n{s}"
+        );
+        assert!(s.contains("`foo`"), "function name must still render");
+    }
+
+    #[test]
+    fn pr_comment_links_function_and_location_when_set() {
+        let report = DeltaReport {
+            entries: vec![delta_entry(
+                "src/a.rs",
+                "foo",
+                12.0,
+                Some(5.0),
+                DeltaStatus::Regressed,
+            )],
+            removed: vec![],
+        };
+        let links = SourceLinks::new("https://github.com/owner/repo".into(), "deadbeef".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        let url = "https://github.com/owner/repo/blob/deadbeef/src/a.rs#L1";
+        // Function cell wrapped in a link.
+        assert!(
+            s.contains(&format!("[`foo`]({url})")),
+            "function cell must be a markdown link, got:\n{s}"
+        );
+        // Location cell wrapped in a link too. The visible text uses the
+        // LCP-stripped form (single entry → CWD fallback or absolute), but
+        // the URL must always use the original path.
+        let loc_link_target = format!("]({url})");
+        let count = s.matches(&loc_link_target).count();
+        assert!(
+            count >= 2,
+            "both Function and Location must link to the same URL, got count={count}:\n{s}"
+        );
+    }
+
+    #[test]
+    fn pr_comment_link_url_uses_path_relative_to_cwd() {
+        // Simulate a CI run: cargo metadata produces an absolute path under
+        // the checkout root (== CWD). The display rule strips CWD; the link
+        // URL must use the *same* repo-relative form so it resolves on
+        // GitHub. A `/blob/<sha>//abs/...` URL would 404.
+        let cwd = std::env::current_dir().expect("cwd");
+        let abs = cwd.join("src").join("schema.rs");
+        let report = DeltaReport {
+            entries: vec![delta_entry(
+                abs.to_str().expect("utf8"),
+                "compile_schema",
+                12.0,
+                Some(5.0),
+                DeltaStatus::Regressed,
+            )],
+            removed: vec![],
+        };
+        let links = SourceLinks::new("https://github.com/o/r".into(), "sha1".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        // GitHub URLs always use forward slashes — `url_for` normalizes
+        // backslashes — so the expected literal is the same on every OS.
+        let expected = "https://github.com/o/r/blob/sha1/src/schema.rs#L1";
+        assert!(
+            s.contains(expected),
+            "URL must use CWD-stripped path with forward slashes \
+             (expected {expected:?}):\n{s}"
+        );
+        assert!(!s.contains("/blob/sha1//"), "no double slash in URL:\n{s}");
+    }
+
+    #[test]
+    fn pr_comment_link_url_does_not_strip_lcp_when_lcp_is_below_repo_root() {
+        // Regression test for the original CI bug: when every rendered
+        // entry lives under `src/`, the LCP (used for visible Location
+        // text) is `<cwd>/src`. The URL must NOT inherit that — it has to
+        // strip CWD only, otherwise `host/repo/blob/<sha>/main.rs` 404s
+        // (the repo path is `src/main.rs`).
+        let cwd = std::env::current_dir().expect("cwd");
+        let a = cwd.join("src").join("a.rs");
+        let b = cwd.join("src").join("b.rs");
+        let report = DeltaReport {
+            entries: vec![
+                delta_entry(
+                    a.to_str().unwrap(),
+                    "fn_a",
+                    12.0,
+                    Some(5.0),
+                    DeltaStatus::Regressed,
+                ),
+                delta_entry(
+                    b.to_str().unwrap(),
+                    "fn_b",
+                    14.0,
+                    Some(5.0),
+                    DeltaStatus::Regressed,
+                ),
+            ],
+            removed: vec![],
+        };
+        let links = SourceLinks::new("https://github.com/o/r".into(), "sha".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        assert!(
+            s.contains("/blob/sha/src/a.rs#L1"),
+            "URL must keep the src/ segment (CWD-relative, not LCP-relative):\n{s}"
+        );
+        assert!(
+            !s.contains("/blob/sha/a.rs#L1"),
+            "URL must not strip src/ even when it's the LCP across rendered rows:\n{s}"
+        );
+    }
+
+    #[test]
+    fn pr_comment_skips_link_when_path_cannot_be_made_repo_relative() {
+        // Path NOT under CWD → link_path returns None and the row falls
+        // back to plain code spans. Use `std::env::temp_dir()` because a
+        // Unix-style `/totally/elsewhere/foo.rs` is treated as RELATIVE on
+        // Windows (no drive letter), which would defeat the test;
+        // `temp_dir()` is absolute on every platform and reliably outside
+        // the cargo-project CWD.
+        let outside = std::env::temp_dir()
+            .join("cargo_crap_link_test")
+            .join("foo.rs");
+        assert!(
+            outside.is_absolute(),
+            "test setup: temp path must be absolute"
+        );
+        let cwd = std::env::current_dir().expect("cwd");
+        assert!(
+            !outside.starts_with(&cwd),
+            "test setup: temp path must not be under CWD"
+        );
+        let report = DeltaReport {
+            entries: vec![delta_entry(
+                outside.to_str().expect("utf8"),
+                "stranger",
+                12.0,
+                Some(5.0),
+                DeltaStatus::Regressed,
+            )],
+            removed: vec![],
+        };
+        let links = SourceLinks::new("https://github.com/o/r".into(), "sha".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        assert!(s.contains("`stranger`"), "function name must still render");
+        assert!(
+            !s.contains("](https://"),
+            "no link expected when path can't be made repo-relative:\n{s}"
+        );
+    }
+
+    #[test]
+    fn pr_comment_removed_entries_are_not_linked() {
+        // Removed functions don't exist on HEAD — linking them would 404.
+        let report = DeltaReport {
+            entries: vec![],
+            removed: vec![RemovedEntry {
+                function: "gone_fn".into(),
+                file: PathBuf::from("src/a.rs"),
+                baseline_crap: 8.0,
+            }],
+        };
+        let links = SourceLinks::new("https://github.com/owner/repo".into(), "sha".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        assert!(s.contains("gone_fn"));
+        assert!(
+            !s.contains("](https://"),
+            "removed entries must not be wrapped in links:\n{s}"
+        );
+    }
+
+    #[test]
+    fn pr_comment_hot_spots_get_links() {
+        let report = DeltaReport {
+            entries: vec![delta_entry(
+                "src/a.rs",
+                "hot_fn",
+                80.0,
+                Some(80.0),
+                DeltaStatus::Unchanged,
+            )],
+            removed: vec![],
+        };
+        let links = SourceLinks::new("https://github.com/owner/repo".into(), "sha".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        assert!(
+            s.contains("[`hot_fn`](https://github.com/owner/repo/blob/sha/src/a.rs#L1)"),
+            "hot-spot Function cell must be a link:\n{s}"
+        );
+    }
+
+    #[test]
+    fn pr_comment_improved_get_links() {
+        let report = DeltaReport {
+            entries: vec![delta_entry(
+                "src/a.rs",
+                "improved_fn",
+                3.0,
+                Some(10.0),
+                DeltaStatus::Improved,
+            )],
+            removed: vec![],
+        };
+        let links = SourceLinks::new("https://github.com/owner/repo".into(), "sha".into());
+        let s = render_delta_pr_with_links(&report, &links);
+        assert!(
+            s.contains("[`improved_fn`](https://github.com/owner/repo/blob/sha/src/a.rs#L1)"),
+            "improved Function cell must be a link:\n{s}"
+        );
+    }
+
+    #[test]
+    fn pr_comment_absolute_table_gets_links() {
+        let entries = vec![CrapEntry {
+            file: PathBuf::from("src/a.rs"),
+            function: "very_crappy".into(),
+            line: 42,
+            cyclomatic: 10.0,
+            coverage: Some(0.0),
+            crap: 110.0,
+            crate_name: None,
+        }];
+        let links = SourceLinks::new("https://github.com/o/r".into(), "abc".into());
+        let mut buf = Vec::new();
+        render(&entries, 30.0, Format::PrComment, Some(&links), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("[`very_crappy`](https://github.com/o/r/blob/abc/src/a.rs#L42)"),
+            "absolute pr-comment must link Function:\n{s}"
+        );
+    }
+
+    #[test]
+    fn markdown_format_also_emits_links() {
+        let entries = vec![CrapEntry {
+            file: PathBuf::from("src/a.rs"),
+            function: "foo".into(),
+            line: 7,
+            cyclomatic: 1.0,
+            coverage: Some(50.0),
+            crap: 5.0,
+            crate_name: None,
+        }];
+        let links = SourceLinks::new("https://github.com/o/r".into(), "main".into());
+        let mut buf = Vec::new();
+        render(&entries, 30.0, Format::Markdown, Some(&links), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("[`foo`](https://github.com/o/r/blob/main/src/a.rs#L7)"),
+            "markdown format must link Function:\n{s}"
+        );
+        assert!(
+            s.contains("[`src/a.rs:7`](https://github.com/o/r/blob/main/src/a.rs#L7)"),
+            "markdown format must link Location:\n{s}"
+        );
+    }
+
+    #[test]
+    fn json_format_unaffected_by_links() {
+        let entries = vec![CrapEntry {
+            file: PathBuf::from("src/a.rs"),
+            function: "foo".into(),
+            line: 1,
+            cyclomatic: 1.0,
+            coverage: Some(100.0),
+            crap: 1.0,
+            crate_name: None,
+        }];
+        let links = SourceLinks::new("https://github.com/o/r".into(), "sha".into());
+        let mut buf = Vec::new();
+        render(&entries, 30.0, Format::Json, Some(&links), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            !s.contains("](https://"),
+            "JSON output must not contain markdown links:\n{s}"
         );
     }
 
@@ -2482,7 +2931,7 @@ mod tests {
     fn render_human_includes_per_crate_section_when_workspace() {
         let entries = vec![entry(Some("alpha"), "a1", 1.0)];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::Human, &mut buf).unwrap();
+        render(&entries, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             s.contains("Per-crate summary:"),
@@ -2495,7 +2944,7 @@ mod tests {
     fn render_human_omits_per_crate_section_when_no_workspace_data() {
         let entries = vec![entry(None, "a1", 1.0)];
         let mut buf = Vec::new();
-        render(&entries, 30.0, Format::Human, &mut buf).unwrap();
+        render(&entries, 30.0, Format::Human, None, &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(
             !s.contains("Per-crate summary"),
