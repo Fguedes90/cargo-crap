@@ -1,6 +1,6 @@
 # Spec 12 — Clickable source links in PR-comment / markdown output
 
-**Status:** Proposed
+**Status:** Implemented
 **Effort:** Small
 **Module:** `src/main.rs`, `src/report.rs`, `.github/workflows/ci.yml`
 
