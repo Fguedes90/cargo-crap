@@ -182,9 +182,18 @@ fn build_delta_row(
     let delta_cell = match de.status {
         DeltaStatus::Regressed => Cell::new(delta_text).fg(Color::Red),
         DeltaStatus::Improved => Cell::new(delta_text).fg(Color::Green),
-        DeltaStatus::New => Cell::new(delta_text).fg(Color::Yellow),
+        DeltaStatus::New | DeltaStatus::Moved => Cell::new(delta_text).fg(Color::Yellow),
         DeltaStatus::Unchanged => Cell::new(delta_text),
     };
+
+    // Location reads `<new-loc>:<line> ← <previous_file>` when the entry
+    // moved, so reviewers see both endpoints without an extra column.
+    let prev_suffix = de
+        .previous_file
+        .as_ref()
+        .map(|p| format!(" ← {}", p.display()))
+        .unwrap_or_default();
+    let location = format!("{}:{}{prev_suffix}", e.file.display(), e.line);
 
     vec![
         Cell::new(grade.icon()).fg(color),
@@ -193,7 +202,7 @@ fn build_delta_row(
         Cell::new(e.cyclomatic as usize),
         Cell::new(coverage_bar(e.coverage)),
         Cell::new(&e.function),
-        Cell::new(format!("{}:{}", e.file.display(), e.line)),
+        Cell::new(location),
     ]
 }
 
@@ -216,6 +225,11 @@ fn write_delta_summary(
         .iter()
         .filter(|e| e.status == DeltaStatus::New)
         .count();
+    let moved = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Moved)
+        .count();
     let unchanged = report
         .entries
         .iter()
@@ -225,10 +239,11 @@ fn write_delta_summary(
 
     writeln!(
         out,
-        "{}  {}  {}  {}  {}",
+        "{}  {}  {}  {}  {}  {}",
         format!("↑ {regressed} regressed").red(),
         format!("↓ {improved} improved").green(),
         format!("★ {new} new").yellow(),
+        format!("↔ {moved} moved").cyan(),
         format!("· {unchanged} unchanged").dimmed(),
         format!("— {removed} removed").dimmed(),
     )?;
@@ -422,6 +437,50 @@ mod tests {
         assert!(
             !s.contains("Per-crate summary"),
             "non-workspace runs must not show per-crate section:\n{s}"
+        );
+    }
+
+    #[test]
+    fn delta_human_summary_counts_moved_correctly() {
+        // Kills: replace `e.status == DeltaStatus::Moved` with `!=` in
+        // write_delta_summary. With 1 Moved and 3 non-Moved the correct
+        // count (1) differs from the mutated count (3) in the rendered
+        // line, so the assertion catches the flipped operator.
+        use crate::delta::{DeltaEntry, DeltaReport, DeltaStatus};
+        let mk_entry = |fn_name: &str, status: DeltaStatus| DeltaEntry {
+            current: CrapEntry {
+                file: PathBuf::from("src/a.rs"),
+                function: fn_name.into(),
+                line: 1,
+                cyclomatic: 1.0,
+                coverage: Some(100.0),
+                crap: 1.0,
+                crate_name: None,
+            },
+            baseline_crap: Some(1.0),
+            delta: Some(0.0),
+            status,
+            previous_file: None,
+        };
+        let report = DeltaReport {
+            entries: vec![
+                mk_entry("moved_fn", DeltaStatus::Moved),
+                mk_entry("u1", DeltaStatus::Unchanged),
+                mk_entry("u2", DeltaStatus::Unchanged),
+                mk_entry("u3", DeltaStatus::Unchanged),
+            ],
+            removed: vec![],
+        };
+        let mut buf = Vec::new();
+        render_delta_human(&report, 30.0, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("↔ 1 moved"),
+            "human delta summary must report 1 moved, not 3:\n{s}"
+        );
+        assert!(
+            !s.contains("↔ 3 moved"),
+            "human delta summary must NOT count non-moved as moved:\n{s}"
         );
     }
 }

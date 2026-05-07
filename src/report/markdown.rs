@@ -5,7 +5,7 @@
 
 use super::links::{SourceLinks, linkify};
 use super::per_crate::write_per_crate_markdown;
-use super::types::{Grade, delta_display};
+use super::types::{Grade, delta_display, format_location_with_prev};
 use super::write_pr_comment_marker;
 use crate::delta::{DeltaEntry, DeltaReport, DeltaStatus};
 use crate::merge::CrapEntry;
@@ -149,12 +149,8 @@ fn write_delta_entries_table(
         let grade = Grade::of(e.crap, threshold);
         let cov = e.coverage.map_or("—".to_string(), |p| format!("{p:.1}"));
         let func = linkify(format!("`{}`", e.function), links, &e.file, e.line);
-        let loc = linkify(
-            format!("`{}:{}`", e.file.display(), e.line),
-            links,
-            &e.file,
-            e.line,
-        );
+        let loc_text = format_location_with_prev(&e.file, e.line, de.previous_file.as_deref());
+        let loc = linkify(loc_text, links, &e.file, e.line);
         writeln!(
             out,
             "| {} | {:.1} | {} | {} | {} | {} | {} |",
@@ -189,6 +185,11 @@ fn write_markdown_delta_stats(
         .iter()
         .filter(|e| e.status == DeltaStatus::New)
         .count();
+    let moved = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Moved)
+        .count();
     let unchanged = report
         .entries
         .iter()
@@ -197,7 +198,7 @@ fn write_markdown_delta_stats(
     writeln!(out)?;
     writeln!(
         out,
-        "↑ {regressed} regressed · ↓ {improved} improved · ★ {new} new · · {unchanged} unchanged · — {} removed",
+        "↑ {regressed} regressed · ↓ {improved} improved · ★ {new} new · ↔ {moved} moved · · {unchanged} unchanged · — {} removed",
         report.removed.len(),
     )?;
     Ok(())
@@ -250,6 +251,50 @@ mod tests {
         assert!(
             s.contains("[`src/a.rs:7`](https://github.com/o/r/blob/main/src/a.rs#L7)"),
             "markdown format must link Location:\n{s}"
+        );
+    }
+
+    #[test]
+    fn delta_markdown_stats_counts_moved_correctly() {
+        // Kills: replace `e.status == DeltaStatus::Moved` with `!=` in
+        // write_markdown_delta_stats. With 1 Moved + 3 non-Moved the
+        // correct count (1) differs from the mutated count (3) in the
+        // emitted line.
+        use crate::delta::{DeltaEntry, DeltaReport, DeltaStatus};
+        let mk_entry = |fn_name: &str, status: DeltaStatus| DeltaEntry {
+            current: CrapEntry {
+                file: PathBuf::from("src/a.rs"),
+                function: fn_name.into(),
+                line: 1,
+                cyclomatic: 1.0,
+                coverage: Some(100.0),
+                crap: 1.0,
+                crate_name: None,
+            },
+            baseline_crap: Some(1.0),
+            delta: Some(0.0),
+            status,
+            previous_file: None,
+        };
+        let report = DeltaReport {
+            entries: vec![
+                mk_entry("moved_fn", DeltaStatus::Moved),
+                mk_entry("u1", DeltaStatus::Unchanged),
+                mk_entry("u2", DeltaStatus::Unchanged),
+                mk_entry("u3", DeltaStatus::Unchanged),
+            ],
+            removed: vec![],
+        };
+        let mut buf = Vec::new();
+        render_delta_markdown(&report, 30.0, None, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("↔ 1 moved"),
+            "markdown stats line must report 1 moved, not 3:\n{s}"
+        );
+        assert!(
+            !s.contains("↔ 3 moved"),
+            "markdown stats line must NOT count non-moved as moved:\n{s}"
         );
     }
 }

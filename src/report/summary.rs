@@ -75,6 +75,11 @@ pub fn render_delta_summary(
         .iter()
         .filter(|e| e.status == DeltaStatus::New)
         .count();
+    let moved = report
+        .entries
+        .iter()
+        .filter(|e| e.status == DeltaStatus::Moved)
+        .count();
     let unchanged = report
         .entries
         .iter()
@@ -82,10 +87,11 @@ pub fn render_delta_summary(
         .count();
     writeln!(
         out,
-        "{}  {}  {}  {}  {}",
+        "{}  {}  {}  {}  {}  {}",
         format!("↑ {regressed} regressed").red(),
         format!("↓ {improved} improved").green(),
         format!("★ {new} new").yellow(),
+        format!("↔ {moved} moved").cyan(),
         format!("· {unchanged} unchanged").dimmed(),
         format!("— {} removed", report.removed.len()).dimmed(),
     )?;
@@ -132,5 +138,49 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(!s.contains("Per-crate summary"));
         assert!(s.contains("Analyzed: 1"));
+    }
+
+    #[test]
+    fn render_delta_summary_counts_moved_correctly() {
+        // Kills: replace `e.status == DeltaStatus::Moved` with `!=`. The
+        // mutation flips the count to "everything except moved" — choosing
+        // 1 Moved + 3 non-Moved makes the correct count (1) and the
+        // mutated count (3) provably different in the rendered text.
+        use crate::delta::{DeltaEntry, DeltaReport, DeltaStatus};
+        let mk_entry = |fn_name: &str, status: DeltaStatus| DeltaEntry {
+            current: CrapEntry {
+                file: PathBuf::from("src/a.rs"),
+                function: fn_name.into(),
+                line: 1,
+                cyclomatic: 1.0,
+                coverage: Some(100.0),
+                crap: 1.0,
+                crate_name: None,
+            },
+            baseline_crap: Some(1.0),
+            delta: Some(0.0),
+            status,
+            previous_file: None,
+        };
+        let report = DeltaReport {
+            entries: vec![
+                mk_entry("moved", DeltaStatus::Moved),
+                mk_entry("u1", DeltaStatus::Unchanged),
+                mk_entry("u2", DeltaStatus::Unchanged),
+                mk_entry("u3", DeltaStatus::Unchanged),
+            ],
+            removed: vec![],
+        };
+        let mut buf = Vec::new();
+        render_delta_summary(&report, &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("↔ 1 moved"),
+            "summary must report 1 moved, not 3 (which would mean == was flipped to !=):\n{s}"
+        );
+        assert!(
+            !s.contains("↔ 3 moved"),
+            "summary must NOT count non-moved entries as moved:\n{s}"
+        );
     }
 }
