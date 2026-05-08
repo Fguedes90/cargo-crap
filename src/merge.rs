@@ -77,6 +77,11 @@ pub struct MergeResult {
 
 /// Merge complexity and coverage data into a sorted [`MergeResult`]
 /// (entries ranked highest score first).
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers always have a fresh HashMap they don't reuse; taking by value matches the consuming pipeline and avoids `&cov` boilerplate at every call site"
+)]
+#[must_use]
 pub fn merge(
     complexity: Vec<FunctionComplexity>,
     coverage: HashMap<PathBuf, FileCoverage>,

@@ -44,6 +44,7 @@ impl FileCoverage {
     /// composed entirely of declarative code (`fn sig() -> Type;`, unreachable
     /// macro expansions, etc.) genuinely has nothing to cover and should not
     /// be penalized.
+    #[must_use]
     pub fn coverage_in_span(
         &self,
         start: usize,
@@ -101,6 +102,10 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::float_cmp,
+    reason = "coverage % is computed from integer line counts; exact equality is the right comparison"
+)]
 mod tests {
     use super::*;
     use std::io::Write;
