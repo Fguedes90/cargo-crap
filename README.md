@@ -1,8 +1,8 @@
 # cargo-crap
 
-[![v0.2.1](https://img.shields.io/badge/v0.2.1-2563eb?style=for-the-badge)](https://github.com/minikin/cargo-crap/releases/tag/v0.2.1)
+[![v0.2.2](https://img.shields.io/badge/v0.2.2-2563eb?style=for-the-badge)](https://github.com/minikin/cargo-crap/releases/tag/v0.2.2)
 [![crates.io](https://img.shields.io/badge/crates.io-E57300?style=for-the-badge&logo=rust&logoColor=white)](https://crates.io/crates/cargo-crap)
-[![docs.rs](https://img.shields.io/badge/docs.rs-000000?style=for-the-badge&logo=docsdotrs&logoColor=white)](https://docs.rs/cargo-crap/0.2.1/cargo_crap/)
+[![docs.rs](https://img.shields.io/badge/docs.rs-000000?style=for-the-badge&logo=docsdotrs&logoColor=white)](https://docs.rs/cargo-crap/0.2.2/cargo_crap/)
 
 > [!TIP]
 > For more context on the motivation behind this crate, read:
