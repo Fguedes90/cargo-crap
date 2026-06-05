@@ -6,7 +6,8 @@
 
 > [!TIP]
 > For more context on the motivation behind this crate, read:
-> [cargo-crap: Finding Untested Complexity in AI-Generated Rust Code](https://minikin.me/blog/cargo-crap)
+> [cargo-crap: Finding Untested Complexity in AI-Generated Rust Code](https://minikin.me/blog/cargo-crap) or watch [
+Your AI Code Might Be CRAP! (Here's How To Fix It)](https://www.youtube.com/watch?v=XuMR1pgc6pc).
 
 Compute the **CRAP** (Change Risk Anti-Patterns) metric for Rust projects.
 
