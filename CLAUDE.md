@@ -17,6 +17,8 @@ All feature specs live in `specs/`. They are written in Gherkin style (Given/Whe
 
 Both must be clean before any commit. Never commit with a failing dogfood run or surviving mutants.
 
+Exception: if the diff touches only `.md` files (docs, specs), no pre-commit check is needed — `just dev` / `just dev-mutants-diff` can be skipped.
+
 ## Commands
 
 ```bash
