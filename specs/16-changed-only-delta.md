@@ -1,6 +1,6 @@
 # Spec 16 — Changed-only output in baseline mode
 
-**Status:** Proposed
+**Status:** Implemented
 **Effort:** Small
 **Module:** `src/main.rs`, `src/config.rs`, `src/report.rs` (dispatcher signature), `src/report/human.rs`, `src/report/markdown.rs`
 

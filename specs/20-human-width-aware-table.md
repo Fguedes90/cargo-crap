@@ -32,12 +32,12 @@ the per-crate rollup table in `--workspace` mode).
 Columns degrade in a fixed priority order as width shrinks. At every width
 the rendered table must fit — no overflowing box-drawing characters.
 
-| Available width | Layout                                                            |
-|-----------------|-------------------------------------------------------------------|
-| ≥ 100           | Full layout as today (10-cell coverage bar)                       |
-| 80 – 99         | Coverage bar shrinks to 5 cells; Location middle-truncated        |
+| Available width | Layout                                                             |
+| --------------- | ------------------------------------------------------------------ |
+| ≥ 100           | Full layout as today (10-cell coverage bar)                        |
+| 80 – 99         | Coverage bar shrinks to 5 cells; Location middle-truncated         |
 | 60 – 79         | Bar dropped (percent kept); long Function names trailing-truncated |
-| < 60            | CC column dropped; grade, CRAP, Function, Location remain         |
+| < 60            | CC column dropped; grade, CRAP, Function, Location remain          |
 
 - Location truncation keeps the tail: `…/pr_comment.rs:380`. The
   `<file>.rs:<line>` suffix must always survive so the output stays

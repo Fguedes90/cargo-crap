@@ -1,6 +1,6 @@
 # Spec 17 — `--sort` option for stable output ordering
 
-**Status:** Proposed
+**Status:** Implemented
 **Effort:** Small
 **Module:** `src/main.rs`, `src/config.rs`, `src/merge.rs` (or a post-filter sort in `main.rs`)
 
