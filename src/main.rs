@@ -58,6 +58,21 @@ struct Cli {
     #[arg(long)]
     workspace: bool,
 
+    /// Analyze only the named workspace member(s), discovered via
+    /// `cargo metadata`. Repeatable, cargo-style: `-p core -p api`.
+    ///
+    /// One invocation, one LCOV parse, one report, one gate decision over
+    /// exactly the selected members (spec 25). Unknown names fail before
+    /// analysis; duplicates are deduplicated; `--path` is ignored.
+    /// Conflicts with `--workspace`, which already means "all members".
+    #[arg(
+        short = 'p',
+        long = "package",
+        value_name = "NAME",
+        conflicts_with = "workspace"
+    )]
+    package: Vec<String>,
+
     /// Glob patterns for files to skip (relative to `--path`).
     /// Use `**` to cross directory boundaries. May be repeated.
     /// Appends to the default exclusions — see `--no-default-excludes`.
@@ -361,34 +376,240 @@ struct WorkspaceMember {
 /// Walk source trees and discover Cargo workspace members in one pass.
 ///
 /// Caps rayon's global thread pool to `jobs` first, so the parallel
-/// `analyze_tree` walk respects user-set bounds. In `--workspace` mode also
-/// discovers all members via `cargo metadata` and walks each member's root.
+/// `analyze_tree` walk respects user-set bounds. In `--workspace` mode all
+/// members discovered via `cargo metadata` are walked; with `-p/--package`
+/// only the selected members are (spec 25). Either way, a member walk never
+/// descends into another member's nested root — each file is analyzed once,
+/// by the member that owns it.
+/// What [`analyze_sources`] hands back to `main`.
+struct AnalyzedSources {
+    fns: Vec<complexity::FunctionComplexity>,
+    /// The analyzed workspace members: all of them under `--workspace`, the
+    /// selected subset under `-p/--package`, empty for single-root runs.
+    members: Vec<WorkspaceMember>,
+    /// Baseline scope attribution for `-p` runs (spec 25). `None` unless
+    /// `-p` narrowed the analysis to a subset of the discovered members.
+    member_scope: Option<MemberScope>,
+}
+
 fn analyze_sources(
     workspace: bool,
+    packages: &[String],
     path: &std::path::Path,
     excludes: &[String],
     jobs: Option<usize>,
-) -> Result<(Vec<complexity::FunctionComplexity>, Vec<WorkspaceMember>)> {
+) -> Result<AnalyzedSources> {
     if let Some(n) = jobs {
         rayon::ThreadPoolBuilder::new()
             .num_threads(n)
             .build_global()
             .with_context(|| format!("configuring rayon thread pool to {n} threads"))?;
     }
-    if workspace {
-        let members = workspace_members()?;
-        let mut all = Vec::new();
-        for m in &members {
-            let fns = complexity::analyze_tree(&m.dir, excludes)
-                .with_context(|| format!("analyzing {}", m.dir.display()))?;
-            all.extend(fns);
-        }
-        Ok((all, members))
-    } else {
+    if !workspace && packages.is_empty() {
         let fns = complexity::analyze_tree(path, excludes)
             .with_context(|| format!("analyzing {}", path.display()))?;
-        Ok((fns, Vec::new()))
+        return Ok(AnalyzedSources {
+            fns,
+            members: Vec::new(),
+            member_scope: None,
+        });
     }
+    analyze_workspace_members(packages, excludes)
+}
+
+/// The workspace side of [`analyze_sources`]: discover members, narrow to
+/// the `-p` selection (all members when empty, i.e. `--workspace`), and
+/// walk each selected member's root.
+fn analyze_workspace_members(
+    packages: &[String],
+    excludes: &[String],
+) -> Result<AnalyzedSources> {
+    let (workspace_root, discovered) = workspace_members()?;
+    let members = if packages.is_empty() {
+        discovered.clone()
+    } else {
+        select_members(&discovered, packages)?
+    };
+    let mut fns = Vec::new();
+    for m in &members {
+        // Nested exclusion is computed against every discovered member, not
+        // just the selected ones: an unselected nested member's files must
+        // not leak into its parent's walk either.
+        let mut walk_excludes = excludes.to_vec();
+        walk_excludes.extend(nested_member_excludes(&m.dir, &discovered));
+        let member_fns = complexity::analyze_tree(&m.dir, &walk_excludes)
+            .with_context(|| format!("analyzing {}", m.dir.display()))?;
+        fns.extend(member_fns);
+    }
+    let member_scope =
+        (!packages.is_empty()).then(|| MemberScope::new(&workspace_root, &discovered, &members));
+    Ok(AnalyzedSources {
+        fns,
+        members,
+        member_scope,
+    })
+}
+
+/// One discovered member as seen by [`MemberScope`]: its directory
+/// (forward-slash normalized, for prefix tests against same-root baseline
+/// paths), its workspace-relative components (for suffix-window tests
+/// against cross-root baseline paths, spec 21), and whether it was selected.
+struct ScopedMember {
+    dir: PathBuf,
+    rel: Vec<String>,
+    selected: bool,
+}
+
+/// Baseline scope for `-p/--package` runs (spec 25): attributes each
+/// baseline entry to the discovered member that owns it, so entries owned
+/// by unselected members vanish before the delta instead of flooding
+/// `removed` (or feeding the pass-2 name matcher phantom moves).
+///
+/// Attribution is two-tier:
+/// 1. **Prefix** (same-root baselines, the common case): the deepest member
+///    dir that is a component-prefix of the entry path wins — exact, so a
+///    root-package member correctly claims files outside every child
+///    member dir.
+/// 2. **Component window** (cross-root baselines): the member whose
+///    workspace-relative dir appears as the longest contiguous component
+///    run in the path wins. Ties that include a selected member keep the
+///    entry, and the root package (empty rel) never claims cross-root
+///    paths — when in doubt, keep the entry (today's behaviour: it shows
+///    in `removed`, which is noisy but never hides a pairing).
+struct MemberScope {
+    members: Vec<ScopedMember>,
+}
+
+impl MemberScope {
+    fn new(
+        workspace_root: &Path,
+        discovered: &[WorkspaceMember],
+        selected: &[WorkspaceMember],
+    ) -> Self {
+        let selected_names: std::collections::HashSet<&str> =
+            selected.iter().map(|m| m.name.as_str()).collect();
+        let members = discovered
+            .iter()
+            .map(|m| ScopedMember {
+                dir: PathBuf::from(m.dir.to_string_lossy().replace('\\', "/")),
+                rel: m
+                    .dir
+                    .strip_prefix(workspace_root)
+                    .map(|rel| {
+                        rel.to_string_lossy()
+                            .replace('\\', "/")
+                            .split('/')
+                            .filter(|c| !c.is_empty())
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                selected: selected_names.contains(m.name.as_str()),
+            })
+            .collect();
+        Self { members }
+    }
+
+    /// True when `file` is owned by an unselected member — the entry must
+    /// be dropped before the delta.
+    fn is_out_of_scope(
+        &self,
+        file: &Path,
+    ) -> bool {
+        let normalized = PathBuf::from(file.to_string_lossy().replace('\\', "/"));
+
+        // Tier 1: deepest member dir that prefixes the path (exact).
+        if let Some(owner) = self
+            .members
+            .iter()
+            .filter(|m| normalized.starts_with(&m.dir))
+            .max_by_key(|m| m.dir.components().count())
+        {
+            return !owner.selected;
+        }
+
+        // Tier 2: longest workspace-relative component window (cross-root).
+        let components: Vec<&str> = normalized
+            .to_str()
+            .map(|s| s.split('/').filter(|c| !c.is_empty()).collect())
+            .unwrap_or_default();
+        let best_len = self
+            .members
+            .iter()
+            .filter(|m| components_contain(&components, &m.rel))
+            .map(|m| m.rel.len())
+            .max();
+        let Some(best_len) = best_len else {
+            return false;
+        };
+        !self
+            .members
+            .iter()
+            .filter(|m| m.rel.len() == best_len && components_contain(&components, &m.rel))
+            .any(|m| m.selected)
+    }
+}
+
+/// True when `window` appears as a contiguous run inside `haystack`.
+/// An empty window never matches — the root package's empty rel must not
+/// claim cross-root paths (see [`MemberScope`]).
+fn components_contain(
+    haystack: &[&str],
+    window: &[String],
+) -> bool {
+    !window.is_empty()
+        && haystack
+            .windows(window.len())
+            .any(|w| w.iter().zip(window).all(|(a, b)| *a == b.as_str()))
+}
+
+/// Resolve `-p/--package` selections against the discovered members.
+/// Unknown names abort before any analysis; duplicate selections collapse
+/// (the filter over `discovered` yields each member at most once); the
+/// discovery order is preserved.
+fn select_members(
+    discovered: &[WorkspaceMember],
+    requested: &[String],
+) -> Result<Vec<WorkspaceMember>> {
+    let available: std::collections::HashSet<&str> =
+        discovered.iter().map(|m| m.name.as_str()).collect();
+    let mut unknown: Vec<&str> = requested
+        .iter()
+        .map(String::as_str)
+        .filter(|n| !available.contains(n))
+        .collect();
+    if !unknown.is_empty() {
+        unknown.sort_unstable();
+        unknown.dedup();
+        let mut names: Vec<&str> = discovered.iter().map(|m| m.name.as_str()).collect();
+        names.sort_unstable();
+        bail!(
+            "unknown package(s): {}; available workspace members: {}",
+            unknown.join(", "),
+            names.join(", "),
+        );
+    }
+    let wanted: std::collections::HashSet<&str> = requested.iter().map(String::as_str).collect();
+    Ok(discovered
+        .iter()
+        .filter(|m| wanted.contains(m.name.as_str()))
+        .cloned()
+        .collect())
+}
+
+/// Exclude globs for other members' roots nested beneath `root`, so a member
+/// walk never descends into a nested member's files (spec 25). The nested
+/// member owns them and is walked separately when itself selected.
+fn nested_member_excludes(
+    root: &std::path::Path,
+    discovered: &[WorkspaceMember],
+) -> Vec<String> {
+    discovered
+        .iter()
+        .filter(|m| m.dir != root)
+        .filter_map(|m| m.dir.strip_prefix(root).ok())
+        .map(|rel| format!("{}/**", rel.to_string_lossy().replace('\\', "/")))
+        .collect()
 }
 
 /// Assign a Cargo workspace member name to each entry by matching the entry's
@@ -588,7 +809,7 @@ fn spinner(msg: &'static str) -> ProgressBar {
 /// Returns one [`WorkspaceMember`] per member crate (name + the directory
 /// containing its `Cargo.toml`). Used both to walk source trees and to
 /// assign a `crate` field to each `CrapEntry` for per-crate rollup.
-fn workspace_members() -> Result<Vec<WorkspaceMember>> {
+fn workspace_members() -> Result<(PathBuf, Vec<WorkspaceMember>)> {
     let output = std::process::Command::new("cargo")
         .args(["metadata", "--no-deps", "--format-version", "1"])
         .output()
@@ -598,9 +819,21 @@ fn workspace_members() -> Result<Vec<WorkspaceMember>> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("`cargo metadata` failed: {stderr}");
     }
+    parse_workspace_metadata(&output.stdout)
+}
 
+/// Parse `cargo metadata` JSON into the workspace root (spec 25 — it
+/// anchors the members' workspace-relative dirs for [`MemberScope`]) and
+/// the member list. Split from [`workspace_members`] so the parsing is
+/// testable without spawning cargo.
+fn parse_workspace_metadata(stdout: &[u8]) -> Result<(PathBuf, Vec<WorkspaceMember>)> {
     let meta: serde_json::Value =
-        serde_json::from_slice(&output.stdout).context("parsing `cargo metadata` output")?;
+        serde_json::from_slice(stdout).context("parsing `cargo metadata` output")?;
+
+    let workspace_root = meta["workspace_root"]
+        .as_str()
+        .map(PathBuf::from)
+        .context("`cargo metadata` output missing `workspace_root`")?;
 
     let members: Vec<WorkspaceMember> = meta["packages"]
         .as_array()
@@ -618,7 +851,7 @@ fn workspace_members() -> Result<Vec<WorkspaceMember>> {
     if members.is_empty() {
         bail!("`cargo metadata` returned no packages");
     }
-    Ok(members)
+    Ok((workspace_root, members))
 }
 
 /// Lead line of the scope-mismatch warning, picked by overlap severity
@@ -719,9 +952,16 @@ fn require_baseline(
     Ok(())
 }
 
+/// True when the run never reads `--path`: `--workspace` and `-p/--package`
+/// both derive their roots from `cargo metadata` instead, so a stale or
+/// missing `--path` must not fail validation.
+fn path_is_ignored(cli: &Cli) -> bool {
+    cli.workspace || !cli.package.is_empty()
+}
+
 /// Validate argument combinations that clap cannot express as declarative rules.
 fn validate_args(cli: &Cli) -> Result<()> {
-    if !cli.workspace && !cli.path.exists() {
+    if !path_is_ignored(cli) && !cli.path.exists() {
         bail!("path does not exist: {}", cli.path.display());
     }
     let has_baseline = cli.baseline.is_some();
@@ -767,6 +1007,7 @@ fn load_filtered_baseline(
     allow_patterns: &[String],
     path: &Path,
     members: &[WorkspaceMember],
+    member_scope: Option<&MemberScope>,
 ) -> Result<Option<Vec<cargo_crap::merge::CrapEntry>>> {
     let Some(baseline_path) = baseline else {
         return Ok(None);
@@ -778,7 +1019,20 @@ fn load_filtered_baseline(
         members.iter().map(|m| m.dir.clone()).collect()
     };
     BaselineFilter::new(excludes, allow_patterns, roots)?.retain(&mut data);
+    apply_member_scope(&mut data, member_scope);
     Ok(Some(data))
+}
+
+/// Drop baseline entries owned by unselected members (spec 25): a `-p` run
+/// never walked them, so they must vanish rather than flood `removed`.
+/// No-op without a scope (single-root and `--workspace` runs).
+fn apply_member_scope(
+    data: &mut Vec<cargo_crap::merge::CrapEntry>,
+    member_scope: Option<&MemberScope>,
+) {
+    if let Some(scope) = member_scope {
+        data.retain(|e| !scope.is_out_of_scope(&e.file));
+    }
 }
 
 /// Render the final report and return `(has_crappy, has_regression)` for exit-code decisions.
@@ -908,8 +1162,13 @@ fn run() -> Result<ExitCode> {
 
     // --- Analysis ---
     let pb = spinner("Analyzing source files…");
-    let (fns, members) = analyze_sources(
+    let AnalyzedSources {
+        fns,
+        members,
+        member_scope,
+    } = analyze_sources(
         cli.workspace,
+        &cli.package,
         &cli.path,
         &effective_exclude,
         cli.jobs.or(config.jobs),
@@ -934,13 +1193,14 @@ fn run() -> Result<ExitCode> {
     // Apply the user-requested ordering after --top has selected by CRAP (spec 17).
     sort_entries(&mut entries, sort_order);
 
-    // --- Baseline (loaded here, filtered per spec 18) ---
+    // --- Baseline (loaded here, filtered per specs 18 + 25) ---
     let baseline_data = load_filtered_baseline(
         cli.baseline.as_ref(),
         &effective_exclude,
         &effective_allow,
         &cli.path,
         &members,
+        member_scope.as_ref(),
     )?;
 
     // --- Render ---
@@ -1076,6 +1336,194 @@ mod tests {
         let lines = stray_lines("stray", &s);
         assert_eq!(lines.len(), 12, "header + 10 examples + tail");
         assert_eq!(lines.last().unwrap(), "    ... and 3 more");
+    }
+
+    fn member(
+        name: &str,
+        dir: &str,
+    ) -> WorkspaceMember {
+        WorkspaceMember {
+            name: name.into(),
+            dir: PathBuf::from(dir),
+        }
+    }
+
+    #[test]
+    fn select_members_filters_and_preserves_discovery_order() {
+        let discovered = vec![
+            member("alpha", "/ws/crates/alpha"),
+            member("beta", "/ws/crates/beta"),
+            member("gamma", "/ws/crates/gamma"),
+        ];
+        let selected = select_members(&discovered, &["gamma".into(), "alpha".into()]).unwrap();
+        let names: Vec<&str> = selected.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["alpha", "gamma"],
+            "discovery order, not request order"
+        );
+    }
+
+    #[test]
+    fn select_members_deduplicates_repeated_selections() {
+        let discovered = vec![member("alpha", "/ws/a"), member("beta", "/ws/b")];
+        let selected = select_members(&discovered, &["alpha".into(), "alpha".into()]).unwrap();
+        assert_eq!(selected.len(), 1);
+    }
+
+    #[test]
+    fn select_members_rejects_unknown_names_listing_available() {
+        let discovered = vec![member("alpha", "/ws/a"), member("beta", "/ws/b")];
+        let err = select_members(&discovered, &["alpha".into(), "zeta".into()])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown package(s): zeta"), "got: {err}");
+        assert!(
+            err.contains("available workspace members: alpha, beta"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_workspace_metadata_extracts_root_and_members() {
+        let json = serde_json::json!({
+            "workspace_root": "/ws",
+            "packages": [
+                {"name": "alpha", "manifest_path": "/ws/crates/alpha/Cargo.toml"},
+            ]
+        });
+        let (root, members) = parse_workspace_metadata(json.to_string().as_bytes()).unwrap();
+        assert_eq!(root, PathBuf::from("/ws"));
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].name, "alpha");
+        assert_eq!(members[0].dir, PathBuf::from("/ws/crates/alpha"));
+    }
+
+    #[test]
+    fn parse_workspace_metadata_rejects_missing_root_and_empty_packages() {
+        let no_root = serde_json::json!({"packages": []});
+        let err = parse_workspace_metadata(no_root.to_string().as_bytes())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("workspace_root"), "got: {err}");
+
+        let empty = serde_json::json!({"workspace_root": "/ws", "packages": []});
+        let err = parse_workspace_metadata(empty.to_string().as_bytes())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no packages"), "got: {err}");
+    }
+
+    /// Scope with a root package plus two `crates/*` members, `alpha`
+    /// selected — the layout of the reviewer-flagged root-leak scenario.
+    fn root_layout_scope() -> MemberScope {
+        let discovered = vec![
+            member("rooty", "/ws"),
+            member("alpha", "/ws/crates/alpha"),
+            member("beta", "/ws/crates/beta"),
+        ];
+        let selected = vec![member("alpha", "/ws/crates/alpha")];
+        MemberScope::new(Path::new("/ws"), &discovered, &selected)
+    }
+
+    #[test]
+    fn scope_prefix_tier_deepest_member_owns_the_file() {
+        let scope = root_layout_scope();
+        // Root-package file: under /ws but under no child member → rooty
+        // owns it, rooty is unselected → dropped. This is the baseline
+        // leak the glob approach could not express.
+        assert!(scope.is_out_of_scope(Path::new("/ws/src/lib.rs")));
+        // Selected member's file: alpha out-prefixes rooty (deeper).
+        assert!(!scope.is_out_of_scope(Path::new("/ws/crates/alpha/src/lib.rs")));
+        // Unselected sibling member.
+        assert!(scope.is_out_of_scope(Path::new("/ws/crates/beta/src/lib.rs")));
+    }
+
+    #[test]
+    fn scope_window_tier_matches_cross_root_baselines() {
+        let scope = root_layout_scope();
+        // Same workspace recorded under a different checkout root (spec 21).
+        assert!(scope.is_out_of_scope(Path::new("/ci/build/repo/crates/beta/src/lib.rs")));
+        assert!(!scope.is_out_of_scope(Path::new("/ci/build/repo/crates/alpha/src/lib.rs")));
+        // Cross-root root-package file: the empty rel never claims it —
+        // conservative keep (it may show in `removed`, never mis-drops).
+        assert!(!scope.is_out_of_scope(Path::new("/ci/build/repo/src/lib.rs")));
+    }
+
+    #[test]
+    fn scope_window_tie_with_a_selected_member_keeps_the_entry() {
+        // `beta` is both an unselected member dir and an ordinary module
+        // dir inside the selected `frontend` — the collision that broke
+        // the unanchored-glob approach. Single-component windows tie;
+        // the selected match must win.
+        let discovered = vec![
+            member("frontend", "/ws/frontend"),
+            member("beta", "/ws/beta"),
+        ];
+        let selected = vec![member("frontend", "/ws/frontend")];
+        let scope = MemberScope::new(Path::new("/ws"), &discovered, &selected);
+        assert!(!scope.is_out_of_scope(Path::new("/ci/x/frontend/src/beta/mod.rs")));
+        // A genuine beta file still drops.
+        assert!(scope.is_out_of_scope(Path::new("/ci/x/beta/src/lib.rs")));
+    }
+
+    #[test]
+    fn scope_window_deeper_rel_wins_over_its_parent() {
+        let discovered = vec![
+            member("parent", "/ws/parent"),
+            member("nested", "/ws/parent/nested"),
+        ];
+        let selected = vec![member("nested", "/ws/parent/nested")];
+        let scope = MemberScope::new(Path::new("/ws"), &discovered, &selected);
+        assert!(!scope.is_out_of_scope(Path::new("/ci/r/parent/nested/src/lib.rs")));
+        assert!(scope.is_out_of_scope(Path::new("/ci/r/parent/src/lib.rs")));
+    }
+
+    #[test]
+    fn scope_normalizes_windows_separators() {
+        let scope = root_layout_scope();
+        assert!(scope.is_out_of_scope(Path::new(r"C:\ci\repo\crates\beta\src\lib.rs")));
+        assert!(!scope.is_out_of_scope(Path::new(r"C:\ci\repo\crates\alpha\src\lib.rs")));
+    }
+
+    #[test]
+    fn components_contain_requires_contiguous_full_window() {
+        let hay = ["ws", "crates", "beta", "src"];
+        assert!(components_contain(&hay, &["crates".into(), "beta".into()]));
+        assert!(!components_contain(
+            &hay,
+            &["crates".into(), "alpha".into()]
+        ));
+        assert!(
+            !components_contain(&hay, &["ws".into(), "beta".into()]),
+            "non-contiguous components must not match"
+        );
+        assert!(!components_contain(&hay, &[]), "empty window never matches");
+    }
+
+    #[test]
+    fn nested_member_excludes_covers_only_roots_beneath_this_one() {
+        let discovered = vec![
+            member("parent", "/ws/parent"),
+            member("nested", "/ws/parent/nested"),
+            member("deep", "/ws/parent/sub/deep"),
+            member("sibling", "/ws/sibling"),
+        ];
+        let mut globs = nested_member_excludes(Path::new("/ws/parent"), &discovered);
+        globs.sort();
+        assert_eq!(
+            globs,
+            ["nested/**", "sub/deep/**"],
+            "nested roots excluded relative to the walk root; siblings untouched"
+        );
+        assert!(
+            nested_member_excludes(Path::new("/ws/sibling"), &discovered).is_empty(),
+            "a leaf member excludes nothing"
+        );
+        assert!(
+            nested_member_excludes(Path::new("/ws/parent/nested"), &discovered).is_empty(),
+            "a member never excludes itself"
+        );
     }
 
     #[test]
