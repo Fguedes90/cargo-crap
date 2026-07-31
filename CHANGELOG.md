@@ -6,6 +6,166 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.4.0] - 2026-07-31
+
+This release implements specs 23–25 — the three feature requests filed
+against 0.3.1 (issues #53, #54, #55). It contains **breaking changes**
+for library consumers and a behavioural change for CI wrappers that
+matched on specific non-zero exit codes; see Changed.
+
+### Added
+
+- **Exit-code contract** (spec 23, #54). The exit code now distinguishes
+  a finished CRAP verdict from a broken run: `0` — analysis completed
+  and no requested gate tripped; `1` — analysis completed, the report
+  fully written, and `--fail-above` / `--fail-regression` tripped;
+  `2` — the run did not complete (usage, input, analysis, or output
+  error; clap's usage exit was already 2 and is now part of the
+  documented contract). The report flush still precedes the verdict, so
+  an unwritable `--output` or `ENOSPC` is exit 2 — never a gate verdict
+  over a truncated report.
+- **Source/LCOV scope-mismatch diagnostics** (spec 24, #53). When the
+  analyzed tree and the LCOV file describe different scopes — the
+  classic cause of a delta full of unrelated 0%-coverage entries — a
+  tiered stderr warning now precedes the report: analyzed/LCOV/matched
+  file counts plus stray files in *both* directions (analyzed-only and
+  LCOV-only), with examples capped at 10 and an explicit
+  different-scopes verdict below 50% overlap. Both JSON envelopes carry
+  the same numbers in an optional additive `diagnostics` object, so CI
+  wrappers can apply their own policy; the published schemas were
+  extended in place (optional field — existing documents stay valid, no
+  version bump). Absolute `SF` paths that alias the same real file
+  (symlinked checkout roots, `/tmp` vs `/private/tmp`, `lcov -a`-merged
+  runs) are recognized and not reported as strays.
+- **Repeatable `-p` / `--package`** (spec 25, #55). Changed-file CI that
+  already knows which packages a PR touches can analyze exactly those
+  workspace members in one invocation — one LCOV parse, one combined
+  report, one gate decision: `cargo crap -p core -p api --lcov
+  lcov.info`. Unknown names fail before analysis (exit 2) listing the
+  available members; duplicates are deduplicated; `--path` is ignored;
+  conflicts with `--workspace`. A member's walk never descends into
+  another member's nested root, and baseline entries owned by
+  unselected members are dropped before the delta (attributed by
+  deepest directory prefix, with a component-suffix fallback for
+  cross-root baselines per spec 21), so a subset run does not flood
+  `removed`.
+
+### Changed
+
+- **BREAKING: runtime errors exit 2 instead of 1** (spec 23). Callers
+  that only test zero vs non-zero are unaffected; wrappers that treated
+  exit 1 as "any failure" now see gate trips only.
+- **BREAKING (library API):** `MergeResult.unmapped_files` is replaced
+  by `MergeResult.diagnostics: Option<ScopeDiagnostics>`, and
+  `report::render` / `report::render_delta` now take a single
+  `&RenderOptions` (new public struct bundling `threshold`, `format`,
+  `links`, `diagnostics`, `show_unchanged`, with a `Default` matching
+  the CLI defaults) instead of positional parameters — future knobs
+  stop being signature breaks. The JSON `Envelope` struct gained an
+  optional `diagnostics` field (additive — baselines from older
+  releases still load).
+- The unmatched-files stderr warning is bounded: 10 example paths per
+  side plus a `... and N more` tail, replacing the previous unbounded
+  one-directional file list.
+
+### Fixed
+
+- **`--workspace` no longer double-analyzes nested members.** In a
+  layout where one member's directory contains another member's root
+  (e.g. a root crate with child members, or nested member dirs), the
+  parent's walk also collected the nested member's files, scoring every
+  nested function twice. Each file is now analyzed exactly once and
+  attributed to the deepest member that owns it.
+- **Items nested inside function bodies no longer inflate the enclosing
+  function's CC** (#63). A local `fn` / `impl` / `mod` defined inside a
+  function body is its own scope, exactly like a closure — but the CC
+  counter recursed into it, so a helper's branches silently counted
+  toward the enclosing function (which could push a simple function
+  over `--threshold`). Scores can *decrease* for functions using the
+  local-helper pattern; see the migration note below.
+- **Config-sourced values are validated like their CLI twins** (#64).
+  `.cargo-crap.toml` could smuggle in values the equivalent flag
+  rejects: a negative `epsilon` made the regression detector classify
+  every unchanged (and even improved) function as `Regressed` —
+  tripping `--fail-regression` on a no-op run — and `jobs = 0`
+  silently fell back to auto-sizing where `--jobs 0` errors. The
+  merged CLI-over-config values are now validated; invalid ones exit 2.
+- **`--summary` no longer replaces `json` and `github` output**
+  (#65, thanks @ShiroKSH). The `--summary` flag was documented as not
+  affecting the machine-readable formats, but it swapped both for the
+  plain-text summary — breaking JSON consumers and dropping GitHub
+  annotations. Both formats now emit their full output with
+  `--summary`, matching the long-documented contract.
+
+### Migrating from 0.3.x
+
+**CI scripts checking exit codes.** `if cargo crap ...` /
+`cargo crap ... || exit 1` need no change (zero vs non-zero is
+preserved). Wrappers that switch on the exact code should treat `1` as
+"gate verdict: the code got crappier" and `2` as "broken run — fix the
+invocation or environment"; before 0.4.0 both cases exited 1, so any
+`== 1` branch that assumed "could be either" can drop its file-size or
+log-parsing heuristics.
+
+**Library consumers.**
+
+```rust
+// 0.3.x
+let result = merge(fns, cov, policy);
+for file in &result.unmapped_files { /* ... */ }
+render(&entries, threshold, format, links, &mut out)?;
+render_delta(&report, threshold, format, links, show_unchanged, &mut out)?;
+
+// 0.4.0
+let result = merge(fns, cov, policy);
+if let Some(d) = &result.diagnostics {
+    // d.source_only supersedes unmapped_files: an exact `count` plus
+    // up to 10 sorted `examples`; d.lcov_only is the new mirror side,
+    // and analyzed/lcov/matched file counts come along.
+}
+let opts = RenderOptions {
+    threshold,
+    format,
+    links,
+    diagnostics: result.diagnostics.as_ref(), // None = no block in JSON
+    show_unchanged,
+};
+// Or start from the CLI defaults (threshold 30, human format):
+// RenderOptions { format: Format::Json, ..Default::default() }
+render(&entries, &opts, &mut out)?;
+render_delta(&report, &opts, &mut out)?;
+```
+
+**JSON consumers.** Both envelopes may now carry an optional top-level
+`diagnostics` object. Parsers that ignore unknown fields need nothing.
+Validators pinned to a *cached pre-0.4.0 copy* of the schemas will
+reject new documents (the schemas declare `additionalProperties:
+false`) — refresh `report-v1.json` / `delta-v2.json` from the repo; the
+published URLs are unchanged.
+
+**Nested-workspace baselines.** If your `--workspace` layout was
+affected by the double-analysis fix, a 0.3.x baseline contains
+duplicate entries that no longer exist; the first 0.4.0 run may report
+them as `removed` once. Regenerate the baseline with 0.4.0 and the
+noise disappears. `--fail-regression` is unaffected (removals never
+trip it).
+
+**CC scores can drop for functions with local helpers.** The
+nested-item fix (#63) means a function containing a local `fn` /
+`impl` / `mod` no longer absorbs the helper's decision points. Against
+a 0.3.x baseline such functions show as one-time `Improved` entries —
+never regressions, so gates are unaffected. Regenerate committed
+baselines once to absorb the shift.
+
+**`--summary` + `json`/`github` scripts.** Anything that relied on the
+old (buggy) behavior of getting the *text summary* under
+`--format json --summary` now receives full JSON — drop `--format
+json` if the text summary is what you wanted.
+
+**stderr parsers.** The unmatched-files warning changed shape (counts,
+two directions, capped examples). Parse the JSON `diagnostics` object
+instead — stderr wording is not a stable interface.
+
 ## [0.3.1] - 2026-07-19
 
 A bug-fix release: three defects around `--output` files and `--baseline`
