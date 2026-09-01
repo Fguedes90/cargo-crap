@@ -13,7 +13,7 @@ use cargo_crap::{
     delta::{compute_delta, load_baseline},
     merge::{MissingCoveragePolicy, ScopeDiagnostics, SortOrder, merge, sort_entries},
     report::{
-        Format, RenderOptions, SourceLinks, crappy_count, render, render_delta,
+        Format, RenderOptions, SourceLinks, StrictSummary, crappy_count, render, render_delta,
         render_delta_summary, render_summary, set_color_enabled,
     },
     score::DEFAULT_THRESHOLD,
@@ -46,6 +46,15 @@ struct Cli {
     /// for a first look at complexity distribution but not a real CRAP run.
     #[arg(long, value_name = "FILE")]
     lcov: Option<PathBuf>,
+
+    /// Path to a `cargo llvm-cov --json` export, scored by *region* instead
+    /// of by line.
+    ///
+    /// A line is the wrong unit for the coverage term: a four-arm `match`
+    /// on one line with a single arm exercised measures 100% by LCOV. This
+    /// input needs no nightly toolchain — `--branch` does, regions do not.
+    #[arg(long, value_name = "FILE", conflicts_with = "lcov")]
+    cov_json: Option<PathBuf>,
 
     /// Root directory to analyze. Defaults to the current directory.
     #[arg(long, value_name = "DIR", default_value = ".")]
@@ -398,6 +407,7 @@ fn analyze_sources(
     path: &std::path::Path,
     excludes: &[String],
     jobs: Option<usize>,
+    opts: complexity::CountOptions,
 ) -> Result<AnalyzedSources> {
     if let Some(n) = jobs {
         rayon::ThreadPoolBuilder::new()
@@ -406,7 +416,7 @@ fn analyze_sources(
             .with_context(|| format!("configuring rayon thread pool to {n} threads"))?;
     }
     if !workspace && packages.is_empty() {
-        let fns = complexity::analyze_tree(path, excludes)
+        let fns = complexity::analyze_tree(path, excludes, opts)
             .with_context(|| format!("analyzing {}", path.display()))?;
         return Ok(AnalyzedSources {
             fns,
@@ -414,7 +424,7 @@ fn analyze_sources(
             member_scope: None,
         });
     }
-    analyze_workspace_members(packages, excludes)
+    analyze_workspace_members(packages, excludes, opts)
 }
 
 /// The workspace side of [`analyze_sources`]: discover members, narrow to
@@ -423,6 +433,7 @@ fn analyze_sources(
 fn analyze_workspace_members(
     packages: &[String],
     excludes: &[String],
+    opts: complexity::CountOptions,
 ) -> Result<AnalyzedSources> {
     let (workspace_root, discovered) = workspace_members()?;
     let members = if packages.is_empty() {
@@ -437,7 +448,7 @@ fn analyze_workspace_members(
         // not leak into its parent's walk either.
         let mut walk_excludes = excludes.to_vec();
         walk_excludes.extend(nested_member_excludes(&m.dir, &discovered));
-        let member_fns = complexity::analyze_tree(&m.dir, &walk_excludes)
+        let member_fns = complexity::analyze_tree(&m.dir, &walk_excludes, opts)
             .with_context(|| format!("analyzing {}", m.dir.display()))?;
         fns.extend(member_fns);
     }
@@ -742,12 +753,18 @@ impl BaselineFilter {
     }
 }
 
-/// Parse the LCOV file if one was provided, returning an empty map otherwise.
-fn load_coverage(lcov: Option<&PathBuf>) -> Result<HashMap<PathBuf, FileCoverage>> {
-    match lcov {
-        Some(path) => coverage::parse_lcov(path)
+/// Parse whichever coverage input was provided, returning an empty map when
+/// neither was. The two are mutually exclusive at the clap level, so the
+/// order of these arms cannot silently pick a winner.
+fn load_coverage(
+    lcov: Option<&PathBuf>,
+    cov_json: Option<&PathBuf>,
+) -> Result<HashMap<PathBuf, FileCoverage>> {
+    match (lcov, cov_json) {
+        (Some(path), _) => coverage::parse_lcov(path)
             .with_context(|| format!("parsing LCOV file {}", path.display())),
-        None => Ok(HashMap::new()),
+        (None, Some(path)) => cargo_crap::coverage_json::parse_llvm_cov_json(path),
+        (None, None) => Ok(HashMap::new()),
     }
 }
 
@@ -1035,11 +1052,14 @@ fn load_filtered_baseline(
     path: &Path,
     members: &[WorkspaceMember],
     member_scope: Option<&MemberScope>,
+    profile: cargo_crap::complexity::Profile,
 ) -> Result<Option<Vec<cargo_crap::merge::CrapEntry>>> {
     let Some(baseline_path) = baseline else {
         return Ok(None);
     };
-    let mut data = load_baseline(baseline_path)?;
+    let loaded = load_baseline(baseline_path)?;
+    warn_profile_mismatch(loaded.profile.as_deref(), profile);
+    let mut data = loaded.entries;
     let roots = if members.is_empty() {
         vec![path.to_path_buf()]
     } else {
@@ -1048,6 +1068,24 @@ fn load_filtered_baseline(
     BaselineFilter::new(excludes, allow_patterns, roots)?.retain(&mut data);
     apply_member_scope(&mut data, member_scope);
     Ok(Some(data))
+}
+
+/// Warn when the baseline was recorded under a different metric contract:
+/// the scores are not comparable, and every entry will read as a
+/// regression or an improvement for the wrong reason. A warning, not an
+/// error — the delta still runs and the exit code is unchanged, because
+/// only the user knows whether the profile change was the point.
+fn warn_profile_mismatch(
+    baseline_profile: Option<&str>,
+    current: cargo_crap::complexity::Profile,
+) {
+    let recorded = baseline_profile.unwrap_or("classic");
+    if recorded != current.as_str() {
+        eprintln!(
+            "warning: baseline was recorded under profile `{recorded}`, this run scores under `{}` — the delta compares numbers from two different contracts",
+            current.as_str()
+        );
+    }
 }
 
 /// Drop baseline entries owned by unselected members (spec 25): a `-p` run
@@ -1168,6 +1206,25 @@ fn parse_and_validate() -> Result<LoadedArgs> {
     })
 }
 
+/// The extra reporting a non-classic run carries, or `None` under
+/// `classic` — which keeps every renderer byte-identical to a pre-profile
+/// run.
+///
+/// The exoneration count is taken from the raw analysis, before `--top` /
+/// `--min` / `--allow` trim the report: a marker hidden by a display
+/// filter still spends the ratchet.
+fn strict_summary(
+    fns: &[cargo_crap::complexity::FunctionComplexity],
+    profile: cargo_crap::complexity::Profile,
+    cap: Option<usize>,
+) -> Option<StrictSummary> {
+    (profile != cargo_crap::complexity::Profile::Classic).then(|| StrictSummary {
+        profile,
+        abort_ok: fns.iter().map(|f| f.abort_ok).sum(),
+        cap,
+    })
+}
+
 fn run() -> Result<ExitCode> {
     let LoadedArgs {
         cli,
@@ -1191,9 +1248,11 @@ fn run() -> Result<ExitCode> {
     let fail_above = resolve_bool(cli.fail_above, config.fail_above);
     let fail_regression = resolve_bool(cli.fail_regression, config.fail_regression);
     let show_unchanged = resolve_bool(cli.show_unchanged, config.show_unchanged);
-    // Config-only knob: deliberately no CLI flag, so there is no CLI side
-    // to resolve against.
+    // Config-only knobs: no CLI flag, so there is no CLI side to resolve
+    // against. The metric contract is resolved before any field of `config`
+    // is moved out below, and a negative or non-finite weight aborts here.
     let uncovered_hints = config.uncovered_hints.unwrap_or(false);
+    let metric = config.metric_settings()?;
     let sort_order = cli.sort.map(Into::into).or(config.sort).unwrap_or_default();
 
     let effective_exclude = effective_excludes(
@@ -1217,10 +1276,12 @@ fn run() -> Result<ExitCode> {
         &cli.path,
         &effective_exclude,
         jobs,
+        metric.options,
     )?;
 
+    let strict = strict_summary(&fns, metric.profile, metric.max_abort_ok);
     pb.set_message("Parsing coverage report…");
-    let coverage = load_coverage(cli.lcov.as_ref())?;
+    let coverage = load_coverage(cli.lcov.as_ref(), cli.cov_json.as_ref())?;
     pb.finish_and_clear();
 
     // --- Merge + filters ---
@@ -1246,6 +1307,7 @@ fn run() -> Result<ExitCode> {
         &cli.path,
         &members,
         member_scope.as_ref(),
+        metric.profile,
     )?;
 
     // --- Render ---
@@ -1266,6 +1328,7 @@ fn run() -> Result<ExitCode> {
             diagnostics: diagnostics.as_ref(),
             show_unchanged,
             uncovered_hints,
+            strict,
         },
         epsilon,
         summary: cli.summary,
@@ -1278,10 +1341,41 @@ fn run() -> Result<ExitCode> {
     // truncated report (#47, spec 23).
     out_box.flush().context("flushing output")?;
 
-    if (fail_above && has_crappy) || (fail_regression && has_regression) {
+    let over_abort_ok = exceeds_abort_cap(strict.map_or(0, |s| s.abort_ok), metric.max_abort_ok);
+    if score_gate_tripped(fail_above, has_crappy, over_abort_ok)
+        || (fail_regression && has_regression)
+    {
         return Ok(ExitCode::from(1));
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `--fail-above` owns both score gates: the threshold breach and the
+/// `crap-ok` ratchet, which is the same promise ("this run must not get
+/// worse") measured on the escape hatch instead of on the score.
+fn score_gate_tripped(
+    fail_above: bool,
+    has_crappy: bool,
+    over_abort_ok: bool,
+) -> bool {
+    fail_above && (has_crappy || over_abort_ok)
+}
+
+/// Whether the `crap-ok` ratchet tripped, reporting it on stderr when it
+/// did. The report itself carries the count; this line names the cap that
+/// was blown, because the exit code alone does not say which gate spoke.
+fn exceeds_abort_cap(
+    total: usize,
+    cap: Option<usize>,
+) -> bool {
+    let Some(cap) = cap else {
+        return false;
+    };
+    if total <= cap {
+        return false;
+    }
+    eprintln!("error: {total} crap-ok exoneration(s) exceed max-abort-ok = {cap}");
+    true
 }
 
 #[cfg(test)]
@@ -1770,6 +1864,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 

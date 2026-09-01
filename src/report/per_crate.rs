@@ -127,6 +127,7 @@ mod tests {
             crap,
             crate_name: crate_name.map(std::string::ToString::to_string),
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 

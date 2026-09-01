@@ -251,9 +251,83 @@ show_unchanged = false    # list Unchanged rows in --baseline mode
 # Config-only — there is deliberately no CLI flag. JSON always carries
 # the full ranges regardless of this key.
 uncovered-hints = false
+
+# Metric contract: "classic" (default) or "strict". Config-only, like every
+# key below it — a score weight flipped per run makes two baselines
+# incomparable.
+profile = "strict"
+# Per-rule overrides on top of the profile's defaults (strict shown).
+abort-weight            = 2.0   # .unwrap(), .expect(), e[i], `/` and `%` by a non-literal
+documented-abort-weight = 1.0   # panic! / todo! / unreachable! / assert*!
+unsafe-weight           = 2.0   # `unsafe` block or `unsafe fn`
+count-closures          = true  # branches inside a closure body count for the enclosing fn
+count-let-else          = true  # `let … else` is a decision point
+total-match-once        = true  # a `match` total by construction costs 1, not 1 per arm
+# Ratchet on `// crap-ok: <reason>` exonerations: the run fails when more
+# markers are in effect than this. Absent = no enforcement, but the count
+# is always reported under a non-classic profile.
+max-abort-ok = 12
 ```
 
 All keys are optional. Unknown keys are rejected to catch typos.
+
+### The `strict` profile
+
+`classic` counts `McCabe` decision points and nothing else, which leaves
+two blind spots the score cannot see past:
+
+- **It prices the abort at zero and the handler at one.** Three `?`
+  cost CC 4; three `.unwrap()` cost CC 1. `strict` charges the hidden
+  abort (`unwrap` / `expect` / indexing / `/` and `%` by a non-literal
+  divisor) `abort-weight`, and the self-naming one (`panic!` and the
+  `assert!` family) `documented-abort-weight`. The weight of `?` stays
+  at 1.0: the inversion is fixed by making the abort expensive, not the
+  propagation cheap.
+- **It cannot see inside a closure, a `let … else`, or the cost of an
+  exhaustive `match`.** The same algorithm written with an iterator
+  scores 1 and written with a loop scores 4; two early returns via
+  `let … else` score 1; a `match` over ten variants scores 11, even
+  though the compiler — not the reader — is the one proving
+  exhaustiveness. `strict` counts the first two and charges a `match`
+  that is total by construction once.
+
+A `match` is total by construction, syntactically: no guard anywhere, no
+`_`, and every arm is a variant pattern whose sub-patterns are
+irrefutable. A bare identifier arm is read as a unit variant only when it
+is uppercase-initial (`None` yes, `n` no) — there is no type resolution
+here, so the naming convention is the tell.
+
+What `strict` deliberately ignores, and why: `as` casts (in quantizing
+code the cast *is* the domain — `clippy::cast_*` is the right sensor),
+`.await` (a suspension point, not a decision), nesting depth (a real
+signal, but one metric cannot carry two dimensions without becoming an
+opaque composite), parameter count and body length (neither is a
+correctness risk), and `macro_rules!` bodies (expansion is not analyzed).
+
+An abort on a line carrying `// crap-ok: <reason>` is charged nothing and
+counted as an exoneration instead. The marker covers its own line and the
+next one (`rustfmt` breaks long aborts across lines), the reason is
+mandatory, and detection is a textual scan — the same sequence inside a
+string literal also exonerates, which is the price of a deterministic
+rule with no token stream. `max-abort-ok` is what keeps the hatch honest.
+
+### Region coverage (`--cov-json`)
+
+LCOV is *line* coverage, and a line is the wrong unit for a term that is
+cubed: a four-arm `match` written on one line with a single arm
+exercised measures **100%**. Feed `cargo llvm-cov --json` output through
+`--cov-json` instead and the same function measures 57.14% — same run,
+same data, finer unit. Measured on `tests/fixtures/region_project`,
+whose two coverage files come from one `cargo llvm-cov` invocation.
+
+```bash
+cargo llvm-cov --json --output-path cov.json --workspace
+cargo crap --cov-json cov.json --workspace --fail-above
+```
+
+Region coverage needs no nightly toolchain — `--branch` does, regions do
+not. `--cov-json` conflicts with `--lcov`; everything downstream (path
+matching, scope diagnostics, the `missing` policy) is unchanged.
 
 ## Design
 

@@ -270,6 +270,7 @@ mod tests {
             crap: 5.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let links = SourceLinks::new("https://github.com/o/r".into(), "main".into());
         let mut buf = Vec::new();
@@ -307,6 +308,7 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(1.0),
             delta: Some(0.0),
@@ -353,6 +355,7 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(1.0),
             delta: Some(0.0),
@@ -369,6 +372,7 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(1.0),
             delta: Some(0.0),
@@ -408,6 +412,7 @@ mod tests {
                 crap: 50.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(40.0),
             delta: Some(10.0),

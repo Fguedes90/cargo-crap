@@ -78,6 +78,18 @@ pub enum Format {
     Shields,
 }
 
+/// What a non-classic run adds to the report: which contract produced the
+/// numbers, how many aborts a `crap-ok` marker exonerated, and the ratchet
+/// they are measured against.
+#[derive(Debug, Clone, Copy)]
+pub struct StrictSummary {
+    pub profile: crate::complexity::Profile,
+    pub abort_ok: usize,
+    /// `max-abort-ok`, when the config set one. `None` means the count is
+    /// reported but nothing enforces it.
+    pub cap: Option<usize>,
+}
+
 /// Options shared by [`render`] and [`render_delta`], so their signatures
 /// survive new knobs without breaking every call site again.
 ///
@@ -111,6 +123,10 @@ pub struct RenderOptions<'a> {
     /// `.cargo-crap.toml`); consulted by the human, markdown, and
     /// pr-comment renderers. JSON always carries the data regardless.
     pub uncovered_hints: bool,
+    /// The metric contract in force, when it is not `classic`. Drives the
+    /// extra human footer line and the two optional JSON envelope fields;
+    /// `None` keeps every format byte-identical to a pre-profile run.
+    pub strict: Option<StrictSummary>,
 }
 
 impl Default for RenderOptions<'_> {
@@ -124,6 +140,7 @@ impl Default for RenderOptions<'_> {
             diagnostics: None,
             show_unchanged: false,
             uncovered_hints: false,
+            strict: None,
         }
     }
 }
@@ -140,8 +157,10 @@ pub fn render(
 ) -> Result<()> {
     let threshold = opts.threshold;
     match opts.format {
-        Format::Json => json::render_json(entries, opts.diagnostics, out),
-        Format::Human => human::render_human(entries, threshold, opts.uncovered_hints, out),
+        Format::Json => json::render_json(entries, opts.diagnostics, opts.strict, out),
+        Format::Human => {
+            human::render_human(entries, threshold, opts.uncovered_hints, opts.strict, out)
+        },
         Format::GitHub => github::render_github(entries, threshold, out),
         Format::Markdown => {
             markdown::render_markdown(entries, threshold, opts.links, opts.uncovered_hints, out)
@@ -171,7 +190,7 @@ pub fn render_delta(
 ) -> Result<()> {
     let threshold = opts.threshold;
     match opts.format {
-        Format::Json => json::render_delta_json(report, opts.diagnostics, out),
+        Format::Json => json::render_delta_json(report, opts.diagnostics, opts.strict, out),
         Format::Human => human::render_delta_human(
             report,
             threshold,

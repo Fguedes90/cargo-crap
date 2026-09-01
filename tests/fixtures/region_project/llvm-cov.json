@@ -1,0 +1,142 @@
+{
+ "data": [
+  {
+   "functions": [
+    {
+     "branches": [],
+     "mcdc_records": [],
+     "count": 1,
+     "filenames": [
+      "src/lib.rs"
+     ],
+     "name": "_RNvNtCs7IAuZ1wRNi8_11regionprobe5testss_9only_zero",
+     "regions": [
+      [
+       6,
+       5,
+       6,
+       19,
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       7,
+       9,
+       7,
+       19,
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       7,
+       20,
+       7,
+       41,
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       8,
+       5,
+       8,
+       6,
+       1,
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "branches": [],
+     "mcdc_records": [],
+     "count": 1,
+     "filenames": [
+      "src/lib.rs"
+     ],
+     "name": "_RNvCs7IAuZ1wRNi8_11regionprobe14one_line_match",
+     "regions": [
+      [
+       1,
+       1,
+       1,
+       35,
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       44,
+       1,
+       45,
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       53,
+       1,
+       55,
+       1,
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       62,
+       1,
+       64,
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       71,
+       1,
+       73,
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       80,
+       1,
+       82,
+       0,
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       85,
+       1,
+       86,
+       1,
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "type": "llvm.coverage.json.export",
+ "version": "3.1.0"
+}

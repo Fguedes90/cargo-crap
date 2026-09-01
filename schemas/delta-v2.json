@@ -28,6 +28,16 @@
     "diagnostics": {
       "$ref": "#/definitions/ScopeDiagnostics",
       "description": "Optional source/LCOV scope diagnostics for the current run (spec 24); absent for complexity-only runs."
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["classic", "strict"],
+      "description": "Metric contract that produced these scores (spec 29). Omitted for `classic`."
+    },
+    "abort_ok_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total `// crap-ok:` exonerations across the analyzed functions. Present only under a non-classic profile."
     }
   },
   "definitions": {
@@ -62,6 +72,11 @@
           "type": "array",
           "items": { "$ref": "#/definitions/LineRange" },
           "description": "Maximal runs of instrumented-but-never-hit lines inside the function's span, from the current run. Omitted when empty or when the file had no coverage data at all."
+        },
+        "abort_ok": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Decision points a `// crap-ok:` marker exonerated in this function (spec 29). Omitted when zero."
         },
         "baseline_crap": {
           "type": ["number", "null"],

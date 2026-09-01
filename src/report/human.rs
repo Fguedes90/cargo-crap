@@ -17,6 +17,7 @@ pub(crate) fn render_human(
     entries: &[CrapEntry],
     threshold: f64,
     uncovered_hints: bool,
+    strict: Option<super::StrictSummary>,
     out: &mut dyn Write,
 ) -> Result<()> {
     if entries.is_empty() {
@@ -31,7 +32,31 @@ pub(crate) fn render_human(
         super::crappy_count(entries, threshold),
         entries.len(),
         threshold,
-    )
+    )?;
+    write_strict_footer(out, strict)
+}
+
+/// One extra line under a non-classic report: which contract scored it and
+/// how much of the escape hatch is in use. Printed even when the count is
+/// zero — a ratchet nobody can read is not a ratchet.
+fn write_strict_footer(
+    out: &mut dyn Write,
+    strict: Option<super::StrictSummary>,
+) -> Result<()> {
+    let Some(s) = strict else {
+        return Ok(());
+    };
+    let cap = match s.cap {
+        Some(cap) => cap.to_string(),
+        None => "no cap".to_string(),
+    };
+    writeln!(
+        out,
+        "profile {}; {} crap-ok exoneration(s) (max-abort-ok: {cap}).",
+        s.profile.as_str(),
+        s.abort_ok,
+    )?;
+    Ok(())
 }
 
 /// Build the full comfy-table for a slice of entries.
@@ -316,6 +341,7 @@ mod tests {
             crap,
             crate_name: crate_name.map(std::string::ToString::to_string),
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 
@@ -340,6 +366,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&all_clean, &opts(30.0, Format::Human), &mut buf).unwrap();
@@ -388,6 +415,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&entries, &opts(30.0, Format::Human), &mut buf).unwrap();
@@ -407,6 +435,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&entries, &opts(30.0, Format::Human), &mut buf).unwrap();
@@ -427,6 +456,7 @@ mod tests {
                 crap: 72.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             CrapEntry {
                 file: PathBuf::from("a.rs"),
@@ -437,6 +467,7 @@ mod tests {
                 crap: 110.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
         ];
         let mut buf = Vec::new();
@@ -459,6 +490,7 @@ mod tests {
             crap: 20.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&entries, &opts(30.0, Format::Human), &mut buf).unwrap();
@@ -509,6 +541,7 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(1.0),
             delta: Some(0.0),
@@ -553,6 +586,7 @@ mod tests {
                 crap: 50.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(40.0),
             delta: Some(10.0),
@@ -658,6 +692,7 @@ mod tests {
             &super::super::test_support::sample_with_uncovered(),
             30.0,
             true,
+            None,
             &mut buf,
         )
         .unwrap();
@@ -674,6 +709,7 @@ mod tests {
             &super::super::test_support::sample_with_uncovered(),
             30.0,
             false,
+            None,
             &mut buf,
         )
         .unwrap();
@@ -689,6 +725,7 @@ mod tests {
             &super::super::test_support::sample(),
             30.0,
             false,
+            None,
             &mut without,
         )
         .unwrap();

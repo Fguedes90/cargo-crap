@@ -91,6 +91,7 @@ Cargo.lock
 mutants.out/
 mutants.out.old/
 lcov.info
+cov.json
 crap-report.json
 mutants.out*/
 

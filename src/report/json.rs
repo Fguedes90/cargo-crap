@@ -51,11 +51,22 @@ pub struct Envelope {
     /// `--baseline` (the mismatch is a property of the producing run).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diagnostics: Option<ScopeDiagnostics>,
+    /// Metric contract that produced these numbers. Omitted for `classic`,
+    /// so the default envelope stays byte-identical to a pre-profile run
+    /// (the committed baseline and the pinned schemas depend on it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    /// Total `// crap-ok:` exonerations across the analyzed functions.
+    /// Present only under a non-classic profile, which is the only one that
+    /// charges the aborts a marker can exonerate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abort_ok_count: Option<usize>,
 }
 
 pub(crate) fn render_json(
     entries: &[CrapEntry],
     diagnostics: Option<&ScopeDiagnostics>,
+    strict: Option<super::StrictSummary>,
     out: &mut dyn Write,
 ) -> Result<()> {
     let envelope = Envelope {
@@ -63,6 +74,8 @@ pub(crate) fn render_json(
         version: SCHEMA_VERSION.to_string(),
         entries: entries.to_vec(),
         diagnostics: diagnostics.cloned(),
+        profile: strict.map(|s| s.profile.as_str().to_string()),
+        abort_ok_count: strict.map(|s| s.abort_ok),
     };
     serde_json::to_writer_pretty(&mut *out, &envelope)?;
     out.write_all(b"\n")?;
@@ -72,6 +85,7 @@ pub(crate) fn render_json(
 pub(crate) fn render_delta_json(
     report: &DeltaReport,
     diagnostics: Option<&ScopeDiagnostics>,
+    strict: Option<super::StrictSummary>,
     out: &mut dyn Write,
 ) -> Result<()> {
     #[derive(serde::Serialize)]
@@ -83,6 +97,10 @@ pub(crate) fn render_delta_json(
         removed: &'a [crate::delta::RemovedEntry],
         #[serde(skip_serializing_if = "Option::is_none")]
         diagnostics: Option<&'a ScopeDiagnostics>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        profile: Option<&'static str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        abort_ok_count: Option<usize>,
     }
     serde_json::to_writer_pretty(
         &mut *out,
@@ -92,6 +110,8 @@ pub(crate) fn render_delta_json(
             entries: &report.entries,
             removed: &report.removed,
             diagnostics,
+            profile: strict.map(|s| s.profile.as_str()),
+            abort_ok_count: strict.map(|s| s.abort_ok),
         },
     )?;
     out.write_all(b"\n")?;
@@ -187,6 +207,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let links = SourceLinks::new("https://github.com/o/r".into(), "sha".into());
         let mut buf = Vec::new();

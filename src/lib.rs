@@ -54,10 +54,12 @@
 //! use std::io;
 //!
 //! // 1. Walk the source tree and compute cyclomatic complexity per function.
-//! //    The second argument is a list of glob patterns to exclude.
+//! //    The second argument is a list of glob patterns to exclude; the
+//! //    third selects the metric contract (`classic` by default).
 //! let fns = complexity::analyze_tree(
 //!     std::path::Path::new("src"),
 //!     &[] as &[&str],
+//!     complexity::CountOptions::default(),
 //! )?;
 //!
 //! // 2. Parse the LCOV report produced by `cargo llvm-cov --lcov`.
@@ -88,6 +90,7 @@
 //! let fns = complexity::analyze_tree(
 //!     std::path::Path::new("src"),
 //!     &[] as &[&str],
+//!     complexity::CountOptions::default(),
 //! )?;
 //! let cov = coverage::parse_lcov(std::path::Path::new("lcov.info"))?;
 //! let entries = merge(fns, cov, MissingCoveragePolicy::Pessimistic).entries;
@@ -123,13 +126,14 @@
 //! let fns = complexity::analyze_tree(
 //!     std::path::Path::new("src"),
 //!     &[] as &[&str],
+//!     complexity::CountOptions::default(),
 //! )?;
 //! let cov = coverage::parse_lcov(std::path::Path::new("lcov.info"))?;
 //! let entries = merge(fns, cov, MissingCoveragePolicy::Pessimistic).entries;
 //!
 //! // Load baseline saved by a previous `--format json --output baseline.json` run.
 //! let baseline = load_baseline(std::path::Path::new("baseline.json"))?;
-//! let report = compute_delta(&entries, &baseline, DEFAULT_EPSILON);
+//! let report = compute_delta(&entries, &baseline.entries, DEFAULT_EPSILON);
 //!
 //! // Exit non-zero if any function regressed.
 //! if report.regression_count() > 0 {
@@ -154,6 +158,7 @@
 pub mod complexity;
 pub mod config;
 pub mod coverage;
+pub mod coverage_json;
 pub mod delta;
 pub mod merge;
 pub mod report;

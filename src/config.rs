@@ -24,8 +24,14 @@
 //! # Append an Uncovered column (uncovered line ranges) to the human,
 //! # markdown, and pr-comment outputs.
 //! uncovered-hints = true
+//! # Metric contract: "classic" (default) or "strict".
+//! profile = "strict"
+//! # Per-rule overrides on top of the profile's defaults.
+//! abort-weight = 2.0
+//! max-abort-ok = 12
 //! ```
 
+use crate::complexity::{CountOptions, Profile};
 use crate::merge::{MissingCoveragePolicy, SortOrder};
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -102,6 +108,107 @@ pub struct Config {
     /// `uncovered-hints` (house style) or `uncovered_hints`.
     #[serde(alias = "uncovered_hints")]
     pub uncovered_hints: Option<bool>,
+
+    /// Metric contract for the run: `"classic"` (default — `McCabe`
+    /// decision points only) or `"strict"` (also charges hidden aborts,
+    /// closure branches and `let … else`, and counts a total `match`
+    /// once). Config-only, like every knob below it: a score weight
+    /// flipped per run would make two baselines incomparable.
+    pub profile: Option<Profile>,
+
+    /// Charge for a hidden abort — `.unwrap()`, `.expect(…)`, indexing,
+    /// `/` or `%` by a non-literal divisor. Overrides the profile default
+    /// (0.0 classic, 2.0 strict). Must be finite and non-negative.
+    pub abort_weight: Option<f64>,
+
+    /// Charge for a self-naming abort — the `panic!` / `assert!` macro
+    /// family. Overrides the profile default (0.0 classic, 1.0 strict).
+    /// Must be finite and non-negative.
+    pub documented_abort_weight: Option<f64>,
+
+    /// Charge for an `unsafe` block or `unsafe fn`. Overrides the profile
+    /// default (0.0 classic, 2.0 strict). Must be finite and non-negative.
+    pub unsafe_weight: Option<f64>,
+
+    /// Count decision points inside closure bodies toward the enclosing
+    /// function. Overrides the profile default (false classic, true strict).
+    pub count_closures: Option<bool>,
+
+    /// Count `let … else` as a decision point. Overrides the profile
+    /// default (false classic, true strict).
+    pub count_let_else: Option<bool>,
+
+    /// Charge a `match` that is total by construction once instead of once
+    /// per arm. Overrides the profile default (false classic, true strict).
+    pub total_match_once: Option<bool>,
+
+    /// Ratchet on `// crap-ok:` exonerations: the run fails when more
+    /// markers are in effect than this. Absent means no enforcement — the
+    /// count is still reported under `strict`, because an escape hatch
+    /// nobody counts rots.
+    pub max_abort_ok: Option<usize>,
+}
+
+impl Config {
+    /// Resolve the effective counting options: the profile supplies every
+    /// default, and each explicit key overrides its own field.
+    ///
+    /// Weights are validated here rather than at the use site because a
+    /// negative or non-finite weight is a tool error (exit 2), not a score:
+    /// it would silently invert the gate instead of tripping it.
+    pub fn count_options(&self) -> Result<CountOptions> {
+        let mut opts = CountOptions::for_profile(self.profile.unwrap_or_default());
+        for (value, key) in [
+            (self.abort_weight, "abort-weight"),
+            (self.documented_abort_weight, "documented-abort-weight"),
+            (self.unsafe_weight, "unsafe-weight"),
+        ] {
+            if let Some(w) = value
+                && (!w.is_finite() || w < 0.0)
+            {
+                anyhow::bail!("{key} must be finite and non-negative, got {w}");
+            }
+        }
+        if let Some(w) = self.abort_weight {
+            opts.abort_weight = w;
+        }
+        if let Some(w) = self.documented_abort_weight {
+            opts.documented_abort_weight = w;
+        }
+        if let Some(w) = self.unsafe_weight {
+            opts.unsafe_weight = w;
+        }
+        if let Some(b) = self.count_closures {
+            opts.count_closures = b;
+        }
+        if let Some(b) = self.count_let_else {
+            opts.count_let_else = b;
+        }
+        if let Some(b) = self.total_match_once {
+            opts.total_match_once = b;
+        }
+        Ok(opts)
+    }
+
+    /// Everything the run needs to know about the metric contract, resolved
+    /// in one place so no caller can score under one profile and report
+    /// another.
+    pub fn metric_settings(&self) -> Result<MetricSettings> {
+        Ok(MetricSettings {
+            options: self.count_options()?,
+            profile: self.profile.unwrap_or_default(),
+            max_abort_ok: self.max_abort_ok,
+        })
+    }
+}
+
+/// The resolved metric contract: what to count, under which name, against
+/// which exoneration ratchet.
+#[derive(Debug, Clone, Copy)]
+pub struct MetricSettings {
+    pub options: CountOptions,
+    pub profile: Profile,
+    pub max_abort_ok: Option<usize>,
 }
 
 /// Walk up from `start` until `.cargo-crap.toml` is found.
@@ -275,6 +382,57 @@ allow = ["Foo::*"]
         assert!(
             err.to_string().contains("parsing"),
             "expected parse error, got: {err}"
+        );
+    }
+
+    /// Resolve `count_options` from a TOML body.
+    fn options_from(body: &str) -> Result<CountOptions> {
+        let cfg: Config = toml::from_str(body).expect("parse");
+        cfg.count_options()
+    }
+
+    #[test]
+    fn profile_defaults_are_overridden_key_by_key() {
+        let opts = options_from("profile = \"strict\"\nabort-weight = 3.5\n").expect("resolve");
+        assert!((opts.abort_weight - 3.5).abs() < f64::EPSILON);
+        // Untouched keys keep the profile's value, not the classic one.
+        assert!((opts.unsafe_weight - 2.0).abs() < f64::EPSILON);
+        assert!(opts.count_closures);
+    }
+
+    #[test]
+    fn a_zero_weight_disables_its_rule_and_is_not_an_error() {
+        // Zero is the documented way to switch one rule off inside an
+        // otherwise strict profile — rejecting it would make the profile
+        // all-or-nothing.
+        let opts = options_from("profile = \"strict\"\nunsafe-weight = 0.0\n").expect("resolve");
+        assert!(opts.unsafe_weight.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn a_negative_or_non_finite_weight_is_rejected_by_name() {
+        for body in [
+            "abort-weight = -0.5\n",
+            "documented-abort-weight = nan\n",
+            "unsafe-weight = inf\n",
+        ] {
+            let err = options_from(body).expect_err(&format!("{body} must be rejected"));
+            let key = body.split_whitespace().next().expect("key");
+            assert!(
+                err.to_string().contains(key),
+                "the message must name the offending key, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn classic_is_the_default_contract() {
+        let opts = options_from("").expect("resolve");
+        assert_eq!(opts, CountOptions::for_profile(Profile::Classic));
+        let cfg: Config = toml::from_str("").expect("parse");
+        assert_eq!(
+            cfg.metric_settings().expect("resolve").profile,
+            Profile::Classic
         );
     }
 }

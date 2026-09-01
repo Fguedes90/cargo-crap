@@ -37,6 +37,7 @@ pub(crate) fn sample() -> Vec<CrapEntry> {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         },
         CrapEntry {
             file: PathBuf::from("a.rs"),
@@ -47,6 +48,7 @@ pub(crate) fn sample() -> Vec<CrapEntry> {
             crap: 110.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         },
     ]
 }

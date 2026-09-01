@@ -115,7 +115,7 @@ impl DeltaReport {
 }
 
 /// Load a JSON baseline produced by a previous `cargo crap --format json` run.
-pub fn load_baseline(path: &Path) -> Result<Vec<CrapEntry>> {
+pub fn load_baseline(path: &Path) -> Result<Baseline> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("reading baseline {}", path.display()))?;
     let envelope: crate::report::Envelope = serde_json::from_str(&raw).with_context(|| {
@@ -124,7 +124,20 @@ pub fn load_baseline(path: &Path) -> Result<Vec<CrapEntry>> {
             path.display()
         )
     })?;
-    Ok(envelope.entries)
+    Ok(Baseline {
+        entries: envelope.entries,
+        profile: envelope.profile,
+    })
+}
+
+/// A loaded baseline: the entries plus the metric contract that produced
+/// them. Comparing scores across profiles is meaningless, so the profile
+/// travels with the data instead of being dropped on the floor.
+pub struct Baseline {
+    pub entries: Vec<CrapEntry>,
+    /// Envelope `profile` field: `None` for a classic run (which omits it)
+    /// and for baselines recorded before the field existed.
+    pub profile: Option<String>,
 }
 
 fn path_key(p: &Path) -> String {
@@ -479,6 +492,7 @@ mod tests {
             crap,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 
@@ -625,6 +639,7 @@ mod tests {
             crap: 5.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let baseline = vec![CrapEntry {
             file: PathBuf::from("src/main.rs"), // different file, same function name
@@ -635,6 +650,7 @@ mod tests {
             crap: 5.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let report = compute_delta(&current, &baseline, DEFAULT_EPSILON);
         assert_eq!(
@@ -666,6 +682,7 @@ mod tests {
             crap: 10.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let baseline = vec![CrapEntry {
             file: PathBuf::from("tests/fixtures/src/lib.rs"),
@@ -676,6 +693,7 @@ mod tests {
             crap: 5.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let report = compute_delta(&current, &baseline, DEFAULT_EPSILON);
         assert_eq!(
@@ -724,9 +742,9 @@ mod tests {
             r#"{"version":"0.0.2","entries":[{"file":"src/lib.rs","function":"foo","line":1,"cyclomatic":1.0,"coverage":100.0,"crap":1.0}]}"#,
         )
         .expect("write");
-        let entries = load_baseline(&path).expect("wrapped baseline must parse");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].function, "foo");
+        let loaded = load_baseline(&path).expect("wrapped baseline must parse");
+        assert_eq!(loaded.entries.len(), 1);
+        assert_eq!(loaded.entries[0].function, "foo");
     }
 
     #[test]
@@ -759,6 +777,7 @@ mod tests {
             crap,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 
@@ -960,6 +979,7 @@ mod tests {
                 crap: 30.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             CrapEntry {
                 file: PathBuf::from("src/lib.rs"),
@@ -970,6 +990,7 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
         ];
         let current = baseline.clone();
@@ -1004,6 +1025,7 @@ mod tests {
             crap,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 

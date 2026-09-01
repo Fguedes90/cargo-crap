@@ -4250,3 +4250,278 @@ fn uncovered_hints_default_off_keeps_human_output_unchanged() {
         "without the config key the column must not appear:\n{stdout}"
     );
 }
+
+// --- profile = "strict" (specs 29–32) ------------------------------------
+
+/// Run against the sample fixture from a temp dir carrying `config`, with
+/// the fixture paths made absolute so the config lookup (which walks up
+/// from CWD) finds ours and not the repo's.
+fn cmd_with_config(config: &str) -> (tempfile::TempDir, Command) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join(".cargo-crap.toml"), config).expect("write config");
+    let src = std::fs::canonicalize(fixture_src()).expect("canonicalize fixture");
+    let lcov = std::fs::canonicalize(fixture_lcov()).expect("canonicalize lcov");
+    let mut command = cmd();
+    command
+        .current_dir(dir.path())
+        .arg("--path")
+        .arg(src)
+        .arg("--lcov")
+        .arg(lcov);
+    (dir, command)
+}
+
+#[test]
+fn strict_profile_raises_scores_above_the_classic_gate() {
+    // Vacuity control: the same source, the same threshold, two contracts —
+    // a gate that never refuses anything is not a gate.
+    let (_dir, mut classic) = cmd_with_config("threshold = 1.0\n");
+    let (_dir2, mut strict) = cmd_with_config("profile = \"strict\"\nthreshold = 1000.0\n");
+    classic.arg("--fail-above").assert().failure().code(1);
+    strict.arg("--fail-above").assert().success();
+}
+
+#[test]
+fn strict_profile_reports_its_name_and_exoneration_count() {
+    let (_dir, mut command) = cmd_with_config("profile = \"strict\"\n");
+    command
+        .assert()
+        .stdout(predicate::str::contains("profile strict"))
+        .stdout(predicate::str::contains("crap-ok exoneration(s)"));
+}
+
+#[test]
+fn classic_output_never_mentions_the_profile() {
+    // The envelope and the footer must stay byte-identical to a
+    // pre-profile run: a committed baseline and the pinned schemas depend
+    // on it.
+    let output = cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let envelope: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    assert!(envelope.get("profile").is_none(), "got: {stdout}");
+    assert!(envelope.get("abort_ok_count").is_none(), "got: {stdout}");
+    assert!(
+        envelope["entries"]
+            .as_array()
+            .expect("entries")
+            .iter()
+            .all(|e| e.get("abort_ok").is_none()),
+        "a zero exoneration count must not reach the envelope: {stdout}"
+    );
+}
+
+#[test]
+fn strict_envelope_carries_profile_and_exoneration_count() {
+    let (_dir, mut command) = cmd_with_config("profile = \"strict\"\n");
+    let output = command.arg("--format").arg("json").output().expect("run");
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let envelope: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    assert_eq!(envelope["profile"], "strict");
+    assert!(
+        envelope["abort_ok_count"].is_number(),
+        "strict must report the count, got: {stdout}"
+    );
+}
+
+#[test]
+fn max_abort_ok_exceeded_fails_the_gate() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("src/lib.rs"),
+        "pub fn f(o: Option<u8>) -> u8 { o.unwrap() } // crap-ok: caller checked it\n",
+    )
+    .expect("write source");
+    std::fs::write(
+        dir.path().join(".cargo-crap.toml"),
+        "profile = \"strict\"\nmax-abort-ok = 0\n",
+    )
+    .expect("write config");
+
+    cmd()
+        .current_dir(dir.path())
+        .arg("--path")
+        .arg(dir.path().join("src"))
+        .arg("--fail-above")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("exceed max-abort-ok = 0"));
+
+    // One marker, cap of one: the ratchet holds where it was set.
+    std::fs::write(
+        dir.path().join(".cargo-crap.toml"),
+        "profile = \"strict\"\nmax-abort-ok = 1\nthreshold = 1000.0\n",
+    )
+    .expect("write config");
+    cmd()
+        .current_dir(dir.path())
+        .arg("--path")
+        .arg(dir.path().join("src"))
+        .arg("--fail-above")
+        .assert()
+        .success();
+}
+
+#[test]
+fn a_negative_weight_is_a_tool_error() {
+    let (_dir, mut command) = cmd_with_config("profile = \"strict\"\nabort-weight = -1.0\n");
+    command
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("abort-weight"));
+}
+
+#[test]
+fn an_unknown_profile_is_a_tool_error() {
+    let (_dir, mut command) = cmd_with_config("profile = \"lenient\"\n");
+    command.assert().failure().code(2);
+}
+
+#[test]
+fn cov_json_conflicts_with_lcov() {
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--cov-json")
+        .arg("tests/fixtures/region_project/llvm-cov.json")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn cov_json_scores_by_region() {
+    // The same fixture, the same run's two coverage files: LCOV says the
+    // one-line match is fully covered, the region export says 4 of 7.
+    let by_line = coverage_of("--lcov", "tests/fixtures/region_project/lcov.info");
+    let by_region = coverage_of("--cov-json", "tests/fixtures/region_project/llvm-cov.json");
+    assert!(
+        (by_line - 100.0).abs() < f64::EPSILON,
+        "LCOV must call the one-line match fully covered, got {by_line}"
+    );
+    assert!(
+        (by_region - 4.0 / 7.0 * 100.0).abs() < 0.01,
+        "expected ~57.14% by region, got {by_region}"
+    );
+}
+
+/// Coverage the CLI reports for `one_line_match` with the given input flag.
+fn coverage_of(
+    flag: &str,
+    file: &str,
+) -> f64 {
+    let output = cmd()
+        .arg("--path")
+        .arg("tests/fixtures/region_project/src")
+        .arg(flag)
+        .arg(file)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let entries = parse_entries(&stdout);
+    entries
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["function"] == "one_line_match")
+        .and_then(|e| e["coverage"].as_f64())
+        .expect("one_line_match coverage")
+}
+
+#[test]
+fn a_missing_cov_json_is_a_tool_error() {
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--cov-json")
+        .arg("/nonexistent/cov.json")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("reading coverage export"));
+}
+
+#[test]
+fn a_baseline_from_another_profile_warns_but_still_compares() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let baseline = dir.path().join("baseline.json");
+    std::fs::write(
+        &baseline,
+        r#"{"version":"0.0.0","profile":"strict","entries":[]}"#,
+    )
+    .expect("write baseline");
+
+    cmd()
+        .arg("--path")
+        .arg(fixture_src())
+        .arg("--lcov")
+        .arg(fixture_lcov())
+        .arg("--baseline")
+        .arg(&baseline)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("recorded under profile `strict`"));
+}
+
+#[test]
+fn a_nonzero_exoneration_count_reaches_the_entry_in_the_envelope() {
+    // The per-entry counter is skipped only when it is zero: a consumer
+    // must be able to see *which* function spends the escape hatch, not
+    // just the total.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("src/lib.rs"),
+        "pub fn marked(o: Option<u8>) -> u8 { o.unwrap() } // crap-ok: caller checked it\npub fn plain(o: Option<u8>) -> u8 { o.unwrap_or(0) }\n",
+    )
+    .expect("write source");
+    std::fs::write(
+        dir.path().join(".cargo-crap.toml"),
+        "profile = \"strict\"\n",
+    )
+    .expect("write config");
+
+    let output = cmd()
+        .current_dir(dir.path())
+        .arg("--path")
+        .arg(dir.path().join("src"))
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let entries = parse_entries(&stdout);
+    let entries = entries.as_array().expect("entries");
+    let marked = entries
+        .iter()
+        .find(|e| e["function"] == "marked")
+        .expect("marked entry");
+    assert_eq!(marked["abort_ok"], 1, "got: {stdout}");
+    let plain = entries
+        .iter()
+        .find(|e| e["function"] == "plain")
+        .expect("plain entry");
+    assert!(
+        plain.get("abort_ok").is_none(),
+        "a zero counter stays out of the envelope: {stdout}"
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stdout).expect("json")["abort_ok_count"],
+        1
+    );
+}

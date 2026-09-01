@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+
+- **`profile = "strict"`, an opt-in metric contract** (specs 29–31).
+  Classic counts `McCabe` decision points and nothing else, which prices
+  the abort at zero and the handler at one — three `?` cost CC 4, three
+  `.unwrap()` cost CC 1 — and cannot see a branch inside a closure, a
+  `let … else`, or the fact that an exhaustive `match` costs one decision
+  and not one per variant. `strict` charges hidden aborts (`unwrap` /
+  `expect` / indexing / `/` and `%` by a non-literal divisor),
+  self-naming ones (`panic!` and the `assert!` family), `unsafe`,
+  closure branches and `let … else`, and counts a `match` that is total
+  by construction once. Weights and switches are config keys
+  (`abort-weight`, `documented-abort-weight`, `unsafe-weight`,
+  `count-closures`, `count-let-else`, `total-match-once`); there is
+  deliberately no CLI flag, because a score knob flipped per run makes
+  two baselines incomparable. `// crap-ok: <reason>` exonerates one
+  abort and is itself ratcheted by `max-abort-ok`.
+- **`--cov-json`, region coverage instead of line coverage** (spec 32).
+  A four-arm `match` on one line with a single arm exercised measures
+  100% by LCOV and 57.14% by region — measured, from one
+  `cargo llvm-cov` run over `tests/fixtures/region_project`. Regions
+  need no nightly toolchain (`--branch` does). Conflicts with `--lcov`;
+  everything downstream is unchanged.
+- The JSON envelope carries `profile` and `abort_ok_count`, and each
+  entry an `abort_ok`, all omitted when absent or zero — a `classic`
+  envelope is byte-identical to a pre-profile one.
+
+The default is `classic`, byte for byte: every number this tool printed
+before this release, it still prints.
+
 ## [0.4.3] - 2026-08-06
 
 ### Fixed

@@ -121,6 +121,7 @@ mod tests {
             crap,
             crate_name: crate_name.map(std::string::ToString::to_string),
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 
@@ -190,6 +191,7 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: Some(1.0),
             delta: Some(0.0),

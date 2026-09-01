@@ -578,6 +578,7 @@ mod tests {
                 crap,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             baseline_crap: baseline,
             delta: baseline.map(|b| crap - b),
@@ -1076,6 +1077,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&entries, &opts(30.0, Format::PrComment), &mut buf).unwrap();
@@ -1094,6 +1096,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&entries, &opts(30.0, Format::PrComment), &mut buf).unwrap();
@@ -1138,6 +1141,7 @@ mod tests {
                 crap: 29.9,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             CrapEntry {
                 file: PathBuf::from("src/a.rs"),
@@ -1148,6 +1152,7 @@ mod tests {
                 crap: 30.0,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
             CrapEntry {
                 file: PathBuf::from("src/a.rs"),
@@ -1158,6 +1163,7 @@ mod tests {
                 crap: 30.1,
                 crate_name: None,
                 uncovered: Vec::new(),
+                abort_ok: 0,
             },
         ];
         let mut buf = Vec::new();
@@ -1190,6 +1196,7 @@ mod tests {
             crap: 110.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let mut buf = Vec::new();
         render(&entries, &opts(30.0, Format::PrComment), &mut buf).unwrap();
@@ -1493,6 +1500,7 @@ mod tests {
             crap: 110.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }];
         let links = SourceLinks::new("https://github.com/o/r".into(), "abc".into());
         let mut buf = Vec::new();

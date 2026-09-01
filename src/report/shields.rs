@@ -184,6 +184,7 @@ mod tests {
             crap: 1.0,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         });
         let report = compute_delta(&entries, &baseline, 0.01);
 

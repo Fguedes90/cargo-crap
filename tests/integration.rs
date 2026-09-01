@@ -25,8 +25,12 @@ fn end_to_end_pipeline_produces_ranked_scores() {
     let root = fixture_root();
 
     // 1. Complexity pass over the fixture crate.
-    let complexity =
-        complexity::analyze_tree(&root.join("src"), &[] as &[&str]).expect("analyze_tree");
+    let complexity = complexity::analyze_tree(
+        &root.join("src"),
+        &[] as &[&str],
+        complexity::CountOptions::default(),
+    )
+    .expect("analyze_tree");
     let names: Vec<_> = complexity.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"trivial"), "trivial fn not found");
     assert!(names.contains(&"moderate"), "moderate fn not found");
@@ -97,8 +101,12 @@ fn json_output_round_trips() {
     // get invalid JSON, even with floats like CRAP scores that could
     // otherwise serialize as NaN.
     let root = fixture_root();
-    let complexity =
-        complexity::analyze_tree(&root.join("src"), &[] as &[&str]).expect("analyze_tree");
+    let complexity = complexity::analyze_tree(
+        &root.join("src"),
+        &[] as &[&str],
+        complexity::CountOptions::default(),
+    )
+    .expect("analyze_tree");
     let coverage = coverage::parse_lcov(&root.join("lcov.info")).expect("parse_lcov");
     let entries = merge(complexity, coverage, MissingCoveragePolicy::Pessimistic).entries;
 
@@ -117,4 +125,50 @@ fn json_output_round_trips() {
         parsed["entries"].is_array(),
         "envelope must contain an `entries` array"
     );
+}
+
+/// The measured defect line coverage cannot see, from one real
+/// `cargo llvm-cov` run over one fixture: `one_line_match` is a four-arm
+/// `match` on a single line with one arm exercised. LCOV records that line
+/// as hit and calls the function 100% covered; LLVM's own regions record
+/// four of seven code regions hit. Same run, same source, same tool — only
+/// the unit differs, and the coverage term of the CRAP formula is cubed.
+#[test]
+fn region_coverage_sees_what_line_coverage_cannot() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/region_project");
+
+    let by_line = coverage_of_one_line_match(&root, "lcov.info");
+    let by_region = coverage_of_one_line_match(&root, "llvm-cov.json");
+
+    assert_eq!(by_line, 100.0, "LCOV cannot see inside a one-line match");
+    assert!(
+        (by_region - 4.0 / 7.0 * 100.0).abs() < 0.01,
+        "expected 4 of 7 code regions covered, got {by_region}"
+    );
+}
+
+/// Score the fixture with one of its two coverage inputs and return the
+/// coverage the pipeline computed for `one_line_match`.
+fn coverage_of_one_line_match(
+    root: &std::path::Path,
+    coverage_file: &str,
+) -> f64 {
+    let complexity = complexity::analyze_tree(
+        &root.join("src"),
+        &[] as &[&str],
+        complexity::CountOptions::default(),
+    )
+    .expect("analyze_tree");
+    let path = root.join(coverage_file);
+    let cov = if path.extension().is_some_and(|e| e == "json") {
+        cargo_crap::coverage_json::parse_llvm_cov_json(&path).expect("parse export")
+    } else {
+        coverage::parse_lcov(&path).expect("parse_lcov")
+    };
+    let entries = merge(complexity, cov, MissingCoveragePolicy::Pessimistic).entries;
+    entries
+        .iter()
+        .find(|e| e.function == "one_line_match")
+        .and_then(|e| e.coverage)
+        .expect("one_line_match must have coverage data")
 }

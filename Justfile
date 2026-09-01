@@ -54,6 +54,15 @@ crap-baseline:
     {{crap_bin}} --lcov lcov.info {{crap_scope}} --format json --sort file --output crap-baseline.json
     @echo "CRAP baseline saved to crap-baseline.json"
 
+# Score this tree under the strict profile, by region instead of by line.
+# Deliberately NOT part of `just dev`: the project's own gate stays
+# classic at threshold 15, for the same reason spec 27 gives for
+# `try-weight` — moving the gate's semantics is a separate decision from
+# offering the knob. Needs `profile = "strict"` in .cargo-crap.toml.
+crap-strict:
+    cargo llvm-cov --json --output-path cov.json --workspace
+    {{crap_bin}} --cov-json cov.json {{crap_scope}} --summary
+
 # CRAP delta vs the recorded baseline: fails on threshold breach OR any regression
 crap-delta:
     #!/usr/bin/env bash

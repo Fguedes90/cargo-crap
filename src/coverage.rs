@@ -17,6 +17,12 @@
 //! *starts* but not where it *ends*, so we can't compute coverage of the
 //! function's body from them. Instead, we intersect the line-level `DA`
 //! records with spans we already have from the AST.
+//!
+//! [`FileCoverage`] also carries the finer unit LCOV cannot express: LLVM
+//! *regions*, filled in by [`crate::coverage_json`]. When a file has
+//! regions they replace lines as the denominator, because a line is not the
+//! unit a branch is taken in — see that module for why the difference
+//! decides gates.
 
 use anyhow::{Context, Result};
 use lcov::reader::Error as LcovReadError;
@@ -49,6 +55,27 @@ impl LineRange {
     }
 }
 
+/// One LLVM coverage region: a source span and how many times it executed.
+///
+/// The columns are not decoration: they are the identity of the span when
+/// two monomorphizations of the same generic emit the same lines (see
+/// [`FileCoverage::merge_from`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Region {
+    pub start_line: u32,
+    pub start_col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
+    pub count: u64,
+}
+
+impl Region {
+    /// Span identity, ignoring the execution count.
+    fn key(&self) -> (u32, u32, u32, u32) {
+        (self.start_line, self.start_col, self.end_line, self.end_col)
+    }
+}
+
 /// Per-file coverage, indexed by line number.
 ///
 /// Only lines that appear in a `DA` record are tracked — these are the
@@ -60,6 +87,10 @@ impl LineRange {
 pub struct FileCoverage {
     /// Line number (1-indexed) → hit count.
     pub lines: BTreeMap<u32, u64>,
+    /// LLVM code regions for this file, sorted by span. Empty for an LCOV
+    /// input, and the empty case is what keeps every line-based number
+    /// identical to a pre-region run.
+    pub regions: Vec<Region>,
 }
 
 impl FileCoverage {
@@ -77,12 +108,47 @@ impl FileCoverage {
             let slot = self.lines.entry(line).or_insert(0);
             *slot = slot.saturating_add(hits);
         }
+        if !other.regions.is_empty() {
+            self.regions.extend(other.regions.iter().copied());
+            self.normalize_regions();
+        }
     }
 
-    /// Percentage of executable lines in `[start..=end]` that were hit at
-    /// least once.
+    /// Collapse regions sharing a span into one with the summed count, then
+    /// sort by span.
     ///
-    /// Returns 100.0 if no executable lines fall inside the span. A function
+    /// This is what makes "covered in one instantiation ⇒ covered": a
+    /// generic emits one region set per monomorphization, and the arm a
+    /// test exercised for `u8` must not read as dead because the `u16`
+    /// instantiation never ran it.
+    pub fn normalize_regions(&mut self) {
+        self.regions.sort_unstable_by_key(Region::key);
+        self.regions.dedup_by(|later, kept| {
+            if kept.key() == later.key() {
+                kept.count = kept.count.saturating_add(later.count);
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    /// Regions fully inside `[start..=end]`.
+    fn regions_in_span(
+        &self,
+        start: u32,
+        end: u32,
+    ) -> impl Iterator<Item = &Region> {
+        self.regions
+            .iter()
+            .filter(move |r| r.start_line >= start && r.end_line <= end)
+    }
+
+    /// Percentage of the coverable units in `[start..=end]` that were hit at
+    /// least once — regions when the file has them, executable lines
+    /// otherwise.
+    ///
+    /// Returns 100.0 when nothing coverable falls inside the span. A function
     /// composed entirely of declarative code (`fn sig() -> Type;`, unreachable
     /// macro expansions, etc.) genuinely has nothing to cover and should not
     /// be penalized.
@@ -94,6 +160,17 @@ impl FileCoverage {
     ) -> f64 {
         let start = start as u32;
         let end = end as u32;
+        if !self.regions.is_empty() {
+            let total = self.regions_in_span(start, end).count();
+            if total == 0 {
+                return 100.0;
+            }
+            let covered = self
+                .regions_in_span(start, end)
+                .filter(|r| r.count > 0)
+                .count();
+            return (covered as f64 / total as f64) * 100.0;
+        }
         let executable: Vec<_> = self.lines.range(start..=end).collect();
         if executable.is_empty() {
             return 100.0;
@@ -102,7 +179,8 @@ impl FileCoverage {
         (covered as f64 / executable.len() as f64) * 100.0
     }
 
-    /// Maximal runs of uncovered instrumented lines in `[start..=end]`.
+    /// Maximal runs of uncovered instrumented lines in `[start..=end]`, or
+    /// the uncovered regions' line spans when the file has regions.
     ///
     /// Only a *covered* instrumented line (hits > 0) closes a run;
     /// non-instrumented gaps are coalesced over. A range's `end` is the
@@ -117,6 +195,9 @@ impl FileCoverage {
     ) -> Vec<LineRange> {
         let start = start as u32;
         let end = end as u32;
+        if !self.regions.is_empty() {
+            return self.uncovered_region_ranges(start, end);
+        }
         let mut ranges = Vec::new();
         let mut open: Option<LineRange> = None;
         for (&line, &hits) in self.lines.range(start..=end) {
@@ -135,6 +216,27 @@ impl FileCoverage {
             }
         }
         ranges.extend(open);
+        ranges
+    }
+
+    /// Uncovered regions inside the span, as line ranges: sorted, and
+    /// deduplicated because several regions of one uncovered arm share a
+    /// line (the whole point of regions is that they are finer than lines).
+    fn uncovered_region_ranges(
+        &self,
+        start: u32,
+        end: u32,
+    ) -> Vec<LineRange> {
+        let mut ranges: Vec<LineRange> = self
+            .regions_in_span(start, end)
+            .filter(|r| r.count == 0)
+            .map(|r| LineRange {
+                start: r.start_line,
+                end: r.end_line,
+            })
+            .collect();
+        ranges.sort_unstable_by_key(|r| (r.start, r.end));
+        ranges.dedup();
         ranges
     }
 }
@@ -297,6 +399,7 @@ mod tests {
     fn fc_from(lines: &[(u32, u64)]) -> FileCoverage {
         FileCoverage {
             lines: lines.iter().copied().collect(),
+            regions: Vec::new(),
         }
     }
 
@@ -402,5 +505,89 @@ mod tests {
             fc.uncovered_ranges_in_span(10, 20),
             LineRange::list(&[(11, 12)])
         );
+    }
+
+    /// A `FileCoverage` carrying only regions, from `(l0, c0, l1, c1,
+    /// count)` tuples.
+    fn fc_regions(regions: &[(u32, u32, u32, u32, u64)]) -> FileCoverage {
+        let mut fc = FileCoverage {
+            lines: BTreeMap::new(),
+            regions: regions
+                .iter()
+                .map(
+                    |&(start_line, start_col, end_line, end_col, count)| Region {
+                        start_line,
+                        start_col,
+                        end_line,
+                        end_col,
+                        count,
+                    },
+                )
+                .collect(),
+        };
+        fc.normalize_regions();
+        fc
+    }
+
+    #[test]
+    fn regions_replace_lines_as_the_denominator() {
+        // Four regions on one line: the unit that makes a one-line `match`
+        // measurable at all.
+        let fc = fc_regions(&[
+            (1, 1, 1, 10, 1),
+            (1, 12, 1, 20, 0),
+            (1, 22, 1, 30, 0),
+            (1, 32, 1, 40, 0),
+        ]);
+        assert!((fc.coverage_in_span(1, 1) - 25.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn a_span_with_no_regions_has_nothing_to_cover() {
+        let fc = fc_regions(&[(10, 1, 10, 9, 0)]);
+        assert!((fc.coverage_in_span(1, 5) - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn uncovered_regions_become_line_ranges() {
+        let fc = fc_regions(&[
+            (3, 1, 3, 10, 1),
+            (4, 1, 4, 10, 0),
+            (4, 12, 4, 20, 0),
+            (6, 1, 7, 10, 0),
+        ]);
+        assert_eq!(
+            fc.uncovered_ranges_in_span(1, 10),
+            LineRange::list(&[(4, 4), (6, 7)]),
+            "two regions on line 4 collapse to one range; a covered region contributes none"
+        );
+    }
+
+    #[test]
+    fn merging_regions_is_how_a_generic_gets_credit_once() {
+        // Two instantiations of one generic: the arm exercised in either
+        // one is covered, and the identical spans collapse.
+        let mut first = fc_regions(&[(1, 1, 1, 9, 0), (2, 1, 2, 9, 3)]);
+        let second = fc_regions(&[(1, 1, 1, 9, 4), (2, 1, 2, 9, 0)]);
+        first.merge_from(&second);
+        assert_eq!(first.regions.len(), 2);
+        assert_eq!(first.regions[0].count, 4);
+        assert_eq!(first.regions[1].count, 3);
+        assert!((first.coverage_in_span(1, 2) - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn merging_line_data_never_invents_regions() {
+        // An LCOV leg merged into a region-carrying file must leave the
+        // region list alone — and vice versa, a region-free `other` must
+        // not clear what is already there.
+        let mut with_regions = fc_regions(&[(1, 1, 1, 9, 1)]);
+        with_regions.merge_from(&fc_from(&[(1, 2)]));
+        assert_eq!(with_regions.regions.len(), 1);
+        assert_eq!(with_regions.lines.get(&1), Some(&2));
+
+        let mut lines_only = fc_from(&[(1, 0)]);
+        lines_only.merge_from(&fc_from(&[(1, 5)]));
+        assert!(lines_only.regions.is_empty());
     }
 }

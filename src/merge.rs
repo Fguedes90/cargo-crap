@@ -62,6 +62,22 @@ pub struct CrapEntry {
     /// part of any delta pairing key.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uncovered: Vec<LineRange>,
+    /// How many decision points a `// crap-ok:` marker exonerated inside
+    /// this function. Absent from the envelope when 0, which is every
+    /// function under the `classic` profile. Payload only: never part of
+    /// any delta pairing key.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub abort_ok: usize,
+}
+
+/// `skip_serializing_if` predicate: keeps a zero counter out of the JSON
+/// envelope so a classic run stays byte-identical to the pre-profile tool.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde requires the predicate to take a reference"
+)]
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// Final ordering applied to the report entries (spec 17).
@@ -234,6 +250,7 @@ pub fn merge(
                 crap: crap_score,
                 crate_name: None,
                 uncovered,
+                abort_ok: fc.abort_ok,
             })
         })
         .collect();
@@ -442,6 +459,7 @@ mod tests {
     fn cov_with(lines: &[(u32, u64)]) -> FileCoverage {
         FileCoverage {
             lines: lines.iter().copied().collect::<BTreeMap<_, _>>(),
+            regions: Vec::new(),
         }
     }
 
@@ -525,6 +543,7 @@ mod tests {
                 start_line: 1,
                 end_line: 1,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
             FunctionComplexity {
                 file: PathBuf::from("/repo/vendor/dep/src/lib.rs"),
@@ -532,6 +551,7 @@ mod tests {
                 start_line: 1,
                 end_line: 1,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
         ];
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
@@ -572,6 +592,7 @@ mod tests {
             start_line: 1,
             end_line: 2,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
         let diag = result.diagnostics.expect("diagnostics present");
@@ -609,6 +630,7 @@ mod tests {
             start_line: 1,
             end_line: 1,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
         let diag = result.diagnostics.expect("diagnostics present");
@@ -662,6 +684,7 @@ mod tests {
             start_line: 1,
             end_line: 2,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
 
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
@@ -684,6 +707,7 @@ mod tests {
                 start_line: 1,
                 end_line: 3,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
             FunctionComplexity {
                 file: PathBuf::from("a.rs"),
@@ -691,6 +715,7 @@ mod tests {
                 start_line: 10,
                 end_line: 30,
                 cyclomatic: 10.0,
+                abort_ok: 0,
             },
         ];
         let result = merge(
@@ -710,6 +735,7 @@ mod tests {
             start_line: 1,
             end_line: 5,
             cyclomatic: 3.0,
+            abort_ok: 0,
         }];
         let result = merge(complexity, HashMap::new(), MissingCoveragePolicy::Skip);
         assert!(result.entries.is_empty());
@@ -757,6 +783,7 @@ mod tests {
                 start_line: 1,
                 end_line: 3,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
             FunctionComplexity {
                 file: PathBuf::from("/project/src/bar.rs"),
@@ -764,6 +791,7 @@ mod tests {
                 start_line: 1,
                 end_line: 3,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
         ];
 
@@ -794,6 +822,7 @@ mod tests {
             start_line: 1,
             end_line: 3,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
 
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
@@ -835,6 +864,7 @@ mod tests {
             start_line: 1,
             end_line: 1,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
 
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
@@ -870,6 +900,7 @@ mod tests {
             start_line: 1,
             end_line: 1,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
 
         let result = merge(complexity, cov_map, MissingCoveragePolicy::Pessimistic);
@@ -896,6 +927,7 @@ mod tests {
                 start_line: 1,
                 end_line: 3,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
             FunctionComplexity {
                 file: PathBuf::from("/b/src/lib.rs"),
@@ -903,6 +935,7 @@ mod tests {
                 start_line: 1,
                 end_line: 3,
                 cyclomatic: 1.0,
+                abort_ok: 0,
             },
         ];
 
@@ -954,6 +987,7 @@ mod tests {
             crap,
             crate_name: None,
             uncovered: Vec::new(),
+            abort_ok: 0,
         }
     }
 
@@ -1028,6 +1062,7 @@ mod tests {
             start_line: 1,
             end_line: 3,
             cyclomatic: 1.0,
+            abort_ok: 0,
         }];
         let result = merge(
             complexity,
@@ -1050,6 +1085,7 @@ mod tests {
             start_line: 10,
             end_line: 20,
             cyclomatic: 3.0,
+            abort_ok: 0,
         }];
         let mut cov_map = HashMap::new();
         cov_map.insert(
@@ -1077,6 +1113,7 @@ mod tests {
             start_line: 10,
             end_line: 20,
             cyclomatic: 3.0,
+            abort_ok: 0,
         }];
         let mut cov_map = HashMap::new();
         cov_map.insert(PathBuf::from("src/other.rs"), cov_with(&[(10, 0)]));
@@ -1111,6 +1148,7 @@ mod tests {
             crap: 4.5,
             crate_name: None,
             uncovered: vec![LineRange { start: 3, end: 5 }],
+            abort_ok: 0,
         };
         let ser = serde_json::to_string(&e).expect("serialize");
         assert!(
