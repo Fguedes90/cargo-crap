@@ -421,8 +421,8 @@ fn is_documented_abort(ident: &syn::Ident) -> bool {
 }
 
 /// Whether an operand is a value the reader can evaluate without running
-/// the program: a literal, a constant range, or a path named like a
-/// constant (`SCREAMING_SNAKE_CASE`, the same naming-convention tell the
+/// the program: a literal, or a path named like a constant
+/// (`SCREAMING_SNAKE_CASE`, the same naming-convention tell the
 /// unit-variant rule leans on). Casts and parentheses around one still
 /// count as one.
 ///
@@ -448,13 +448,6 @@ fn is_constant_operand(expr: &syn::Expr) -> bool {
             let name = seg.ident.to_string();
             !name.is_empty() && name.chars().all(|c| !c.is_lowercase())
         }),
-        // `buf[4..8]` is as constant as `buf[4]`: a slice index is an
-        // `Expr::Range`, and reading it as "computed" charged a fixed-size
-        // 84-byte packer 22 for eleven constant-bounds writes.
-        syn::Expr::Range(r) => {
-            r.start.as_deref().is_none_or(is_constant_operand)
-                && r.end.as_deref().is_none_or(is_constant_operand)
-        },
         _ => false,
     }
 }
