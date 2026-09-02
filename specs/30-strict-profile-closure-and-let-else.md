@@ -128,10 +128,10 @@ Then  the CC is 3.0 (base 1 + both `if`s inside the closure) — the closure
 
 ## Tasks
 
-- [ ] **T1 — `count_closures` gate on `visit_expr_closure`: recurse into the closure body via `visit::visit_expr_closure` when set, keep the no-op otherwise.** Needs: spec 29 T1 (`CountOptions`). Scenarios: _Iterator-with-branch ties with the equivalent loop in strict_, _Decision points inside a closure add per-branch, not per-closure_. Tests: unit + property.
-- [ ] **T2 — Confirm `?` inside a closure is reachable once T1 recurses (no separate visitor change needed — `visit_expr_try` already fires on the walked subtree).** Needs: T1. Scenarios: _`?` inside a closure counts in strict_. Tests: unit.
-- [ ] **T3 — `count_let_else` gate: implement `visit_local`, add `count_let_else` weight (1.0) when `LocalInit::diverge` is present.** Needs: spec 29 T1. Scenarios: _Two `let … else` add two decisions_. Tests: unit + property.
-- [ ] **T4 — Regression-pin that `visit_item` stays a no-op under both profiles (no new gate is added to it).** Needs: T1, T3. Scenarios: _A nested named item never counts, in either profile_. Tests: unit.
+- [x] **T1 — `count_closures` gate on `visit_expr_closure`: recurse into the closure body via `visit::visit_expr_closure` when set, keep the no-op otherwise. Rides `CountOptions` from spec 29 T1, which lands first.** Scenarios: _Iterator-with-branch ties with the equivalent loop in strict_, _Decision points inside a closure add per-branch, not per-closure_. Tests: unit + property.
+- [x] **T2 — Confirm `?` inside a closure is reachable once T1 recurses (no separate visitor change needed — `visit_expr_try` already fires on the walked subtree).** Needs: T1. Scenarios: _`?` inside a closure counts in strict_. Tests: unit.
+- [x] **T3 — `count_let_else` gate: implement `visit_local`, add `count_let_else` weight (1.0) when `LocalInit::diverge` is present. Rides `CountOptions` from spec 29 T1.** Scenarios: _Two `let … else` add two decisions_. Tests: unit + property.
+- [x] **T4 — Regression-pin that `visit_item` stays a no-op under both profiles (no new gate is added to it).** Needs: T1, T3. Scenarios: _A nested named item never counts, in either profile_. Tests: unit.
 
 ---
 

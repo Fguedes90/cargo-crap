@@ -1478,6 +1478,30 @@ fn f(x: u8) -> u8 {
     }
 
     #[test]
+    fn an_uppercase_binding_wrongly_keeps_the_discount() {
+        // The documented limit of deciding without a type checker: this
+        // `Name` is a binding, not a unit variant, and the naming
+        // convention is the only tell there is. Pinned so the limit is a
+        // known price and not a surprise.
+        // `Zero` and `Other` are bindings — the first one already matches
+        // everything — but uppercase reads as a unit variant here, so the
+        // discount applies where it should not: 3 under classic, 2 under
+        // strict.
+        assert_cc(
+            r"
+fn f(x: u8) -> u8 {
+    match x {
+        Zero => 0,
+        Other => Other,
+    }
+}
+",
+            3.0,
+            2.0,
+        );
+    }
+
+    #[test]
     fn nested_match_suppression_is_saved_and_restored() {
         // Outer total, inner per-arm: 1 (base) + 1 (outer) + 2 (inner arms).
         assert_eq!(

@@ -4525,3 +4525,55 @@ fn a_nonzero_exoneration_count_reaches_the_entry_in_the_envelope() {
         1
     );
 }
+
+#[test]
+fn a_function_absent_from_the_export_falls_through_to_the_missing_policy() {
+    // Everything downstream of the parser is shared with the LCOV path:
+    // the region map is just another `HashMap<PathBuf, FileCoverage>`, so
+    // a file the export never mentions is "unknown", not "0% covered",
+    // and `--missing` decides — exactly as it always did.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("src/lib.rs"),
+        "pub fn lonely() -> u8 { 1 }\n",
+    )
+    .expect("write source");
+    let export = dir.path().join("cov.json");
+    std::fs::write(
+        &export,
+        r#"{"data":[{"functions":[{"filenames":["src/elsewhere.rs"],"regions":[[1,1,1,9,1,0,0,0]]}]}]}"#,
+    )
+    .expect("write export");
+
+    let coverage_under = |policy: &str| -> serde_json::Value {
+        let output = cmd()
+            .arg("--path")
+            .arg(dir.path().join("src"))
+            .arg("--cov-json")
+            .arg(&export)
+            .arg("--missing")
+            .arg(policy)
+            .arg("--format")
+            .arg("json")
+            .output()
+            .expect("run");
+        let stdout = String::from_utf8(output.stdout).expect("utf8");
+        parse_entries(&stdout)
+    };
+
+    let pessimistic = coverage_under("pessimistic");
+    assert_eq!(pessimistic[0]["function"], "lonely");
+    assert!(
+        pessimistic[0]["coverage"].is_null(),
+        "unknown must stay distinguishable from 0%: {pessimistic}"
+    );
+    assert_eq!(pessimistic[0]["crap"], 2.0, "scored as 0% covered");
+
+    let skip = coverage_under("skip");
+    assert_eq!(
+        skip.as_array().expect("entries").len(),
+        0,
+        "`skip` drops the unmatched function entirely: {skip}"
+    );
+}

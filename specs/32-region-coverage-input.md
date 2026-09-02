@@ -154,14 +154,14 @@ Then  the Uncovered cell lists both regions' line ranges, deduplicated
 
 ## Tasks
 
-- [ ] **T1 — `Region` struct and `parse_llvm_cov_json` parser: read `data[0].functions[].filenames`/`regions`, attribute each `kind == 0` region to `filenames[file_id]`.** Scenarios: _The same function scores 100% by line, ~57.14% by region_, _Only `kind == 0` regions are counted_. Tests: unit + property.
-- [ ] **T2 — Parse errors: missing file, invalid JSON, unexpected shape → `anyhow::Error` surfaced as exit 2.** Needs: T1. Scenarios: _A missing or unreadable coverage-JSON file is a tool error_. Tests: unit.
-- [ ] **T3 — `FileCoverage.regions: Vec<Region>` field (default empty) populated by the region path, left empty by the LCOV path.** Needs: T1. Scenarios: _The same function scores 100% by line, ~57.14% by region_. Tests: unit.
-- [ ] **T4 — `coverage_in_span` region branch: when `regions` is non-empty, compute the ratio over regions overlapping `[start, end]` instead of `self.lines`.** Needs: T3. Scenarios: _The same function scores 100% by line, ~57.14% by region_, _A span with no regions is fully covered_. Tests: unit + property.
-- [ ] **T5 — `uncovered_ranges_in_span` region branch: emit `LineRange`s from uncovered regions, sorted and deduplicated.** Needs: T3. Scenarios: _`--cov-json` uncovered-range hints use region bounds_. Tests: unit + property.
-- [ ] **T6 — `merge_from` region union: merge by `(l0, c0, l1, c1)` key, saturating-sum `count`.** Needs: T3. Scenarios: _Regions from two instantiations of the same generic merge_. Tests: unit + property.
-- [ ] **T7 — `--cov-json <FILE>` CLI flag with `conflicts_with("lcov")`, routed through `load_coverage`.** Needs: T2. Scenarios: _`--cov-json` conflicts with `--lcov`_. Tests: acceptance.
-- [ ] **T8 — End-to-end wiring: `PathIndex`/suffix matching/`missing` policy exercised unchanged against a `--cov-json`-sourced `HashMap<PathBuf, FileCoverage>`.** Needs: T4, T5, T6, T7. Scenarios: _A function absent from the export falls through to `--missing`_. Tests: acceptance.
+- [x] **T1 — `Region` struct and `parse_llvm_cov_json` parser: read `data[0].functions[].filenames`/`regions`, attribute each `kind == 0` region to `filenames[file_id]`.** Scenarios: _The same function scores 100% by line, ~57.14% by region_, _Only `kind == 0` regions are counted_. Tests: unit + property.
+- [x] **T2 — Parse errors: missing file, invalid JSON, unexpected shape → `anyhow::Error` surfaced as exit 2.** Needs: T1. Scenarios: _A missing or unreadable coverage-JSON file is a tool error_. Tests: unit.
+- [x] **T3 — `FileCoverage.regions: Vec<Region>` field (default empty) populated by the region path, left empty by the LCOV path.** Needs: T1. Scenarios: _The same function scores 100% by line, ~57.14% by region_. Tests: unit.
+- [x] **T4 — `coverage_in_span` region branch: when `regions` is non-empty, compute the ratio over regions overlapping `[start, end]` instead of `self.lines`.** Needs: T3. Scenarios: _The same function scores 100% by line, ~57.14% by region_, _A span with no regions is fully covered_. Tests: unit + property.
+- [x] **T5 — `uncovered_ranges_in_span` region branch: emit `LineRange`s from uncovered regions, sorted and deduplicated.** Needs: T3. Scenarios: _`--cov-json` uncovered-range hints use region bounds_. Tests: unit + property.
+- [x] **T6 — `merge_from` region union: merge by `(l0, c0, l1, c1)` key, saturating-sum `count`.** Needs: T3. Scenarios: _Regions from two instantiations of the same generic merge_. Tests: unit + property.
+- [x] **T7 — `--cov-json <FILE>` CLI flag with `conflicts_with("lcov")`, routed through `load_coverage`.** Needs: T2. Scenarios: _`--cov-json` conflicts with `--lcov`_. Tests: acceptance.
+- [x] **T8 — End-to-end wiring: `PathIndex`/suffix matching/`missing` policy exercised unchanged against a `--cov-json`-sourced `HashMap<PathBuf, FileCoverage>`.** Needs: T4, T5, T6, T7. Scenarios: _A function absent from the export falls through to `--missing`_. Tests: acceptance.
 
 ---
 

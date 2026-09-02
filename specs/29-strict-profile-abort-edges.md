@@ -239,14 +239,14 @@ And   the same applies to `documented-abort-weight` and `unsafe-weight`
 
 ## Tasks
 
-- [ ] **T1 — `Profile` enum and `CountOptions` struct with per-profile defaults.** Scenarios: _Default classic profile is unchanged_. Tests: unit + property.
-- [ ] **T2 — Thread `CountOptions` through `analyze_file`/`analyze_tree`/`CcCounter`; `count_cyclomatic` accumulator becomes `f64`.** Needs: T1. Scenarios: _Default classic profile is unchanged_. Tests: unit + acceptance.
-- [ ] **T3 — Abort weighting: `.unwrap()`/`.expect()`, index, slice, non-literal `/`/`%`.** Needs: T2. Scenarios: _Three `.unwrap()` cost more than three `?`_, _Division by a constant is free, by a variable is an abort_, _`matches!` rides `total-match-once`, and non-aborting `unwrap_or*`/`expect_err` never abort_. Tests: unit + property.
-- [ ] **T4 — Documented-abort macro weighting (`panic!`/`todo!`/`unimplemented!`/`unreachable!`/`assert*!`/`debug_assert*!`) and `unsafe`-block/`unsafe fn` weighting.** Needs: T2. Scenarios: _`unsafe` blocks and functions count_. Tests: unit + property.
-- [ ] **T5 — `// crap-ok: <reason>` line-scan and exemption application to T3/T4 sites.** Needs: T3, T4. Scenarios: _A marker with a reason exonerates the abort_, _A marker without a reason does not exonerate_, _A marker exonerates the following line too_. Tests: unit + property.
-- [ ] **T6 — `abort_ok` field on `FunctionComplexity`/`CrapEntry`, JSON envelope, human footer.** Needs: T5. Scenarios: _Exoneration count appears in output_. Tests: unit + acceptance.
-- [ ] **T7 — Config keys `profile`, `abort-weight`, `documented-abort-weight`, `unsafe-weight`, `max-abort-ok`, with validation matching `epsilon`.** Needs: T1. Scenarios: _Invalid weight is a tool error_. Tests: unit + property.
-- [ ] **T8 — `max-abort-ok` ratchet enforcement in the exit-code path.** Needs: T6, T7. Scenarios: _`max-abort-ok` exceeded fails the run_. Tests: acceptance.
+- [x] **T1 — `Profile` enum and `CountOptions` struct with per-profile defaults.** Scenarios: _Default classic profile is unchanged_. Tests: unit + property.
+- [x] **T2 — Thread `CountOptions` through `analyze_file`/`analyze_tree`/`CcCounter`; `count_cyclomatic` accumulator becomes `f64`.** Needs: T1. Scenarios: _Default classic profile is unchanged_. Tests: unit + acceptance.
+- [x] **T3 — Abort weighting: `.unwrap()`/`.expect()` and non-constant `/`/`%` (indexing was tried and dropped — see Non-goals).** Needs: T2. Scenarios: _Three `.unwrap()` cost more than three `?`_, _Division by a constant is free, by a variable is an abort_, _`matches!` rides `total-match-once`, and non-aborting `unwrap_or*`/`expect_err` never abort_. Tests: unit + property.
+- [x] **T4 — Documented-abort macro weighting (`panic!`/`todo!`/`unimplemented!`/`unreachable!`/`assert*!`/`debug_assert*!`) and `unsafe`-block/`unsafe fn` weighting.** Needs: T2. Scenarios: _`unsafe` blocks and functions count_. Tests: unit + property.
+- [x] **T5 — `// crap-ok: <reason>` line-scan and exemption application to T3/T4 sites.** Needs: T3, T4. Scenarios: _A marker with a reason exonerates the abort_, _A marker without a reason does not exonerate_, _A marker exonerates the following line too_. Tests: unit + property.
+- [x] **T6 — `abort_ok` field on `FunctionComplexity`/`CrapEntry`, JSON envelope, human footer.** Needs: T5. Scenarios: _Exoneration count appears in output_. Tests: unit + acceptance.
+- [x] **T7 — Config keys `profile`, `abort-weight`, `documented-abort-weight`, `unsafe-weight`, `max-abort-ok`, with validation matching `epsilon`.** Needs: T1. Scenarios: _Invalid weight is a tool error_. Tests: unit + property.
+- [x] **T8 — `max-abort-ok` ratchet enforcement in the exit-code path.** Needs: T6, T7. Scenarios: _`max-abort-ok` exceeded fails the run_. Tests: acceptance.
 
 ---
 
