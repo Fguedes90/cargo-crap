@@ -76,8 +76,9 @@ impl Profile {
 /// is exactly how `Classic` reproduces today's counts.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CountOptions {
-    /// Charge for a hidden abort: `.unwrap()`, `.expect(…)`, indexing, and
-    /// `/` or `%` by a non-literal divisor.
+    /// Charge for a hidden abort: `.unwrap()`, `.expect(…)`, and `/` or
+    /// `%` by a non-constant divisor. Indexing is deliberately not one —
+    /// see [`is_constant_operand`].
     pub abort_weight: f64,
     /// Charge for an abort that names itself in the source: the `panic!` /
     /// `assert!` macro family.
@@ -420,13 +421,23 @@ fn is_documented_abort(ident: &syn::Ident) -> bool {
 }
 
 /// Whether an operand is a value the reader can evaluate without running
-/// the program: a literal, or a path named like a constant
-/// (`SCREAMING_SNAKE_CASE`, the same naming-convention tell the unit-variant
-/// rule leans on). Casts and parentheses around one still count as one.
+/// the program: a literal, a constant range, or a path named like a
+/// constant (`SCREAMING_SNAKE_CASE`, the same naming-convention tell the
+/// unit-variant rule leans on). Casts and parentheses around one still
+/// count as one.
 ///
-/// Only used for the divisor: `x / BRICK_SIZE_M` has no more of an abort in
-/// it than `x / 4.0`, and charging it made a three-line coordinate
-/// conversion the second-worst function in a real workspace.
+/// Used for the divisor: `x / BRICK_SIZE_M` has no more of an abort in it
+/// than `x / 4.0`, and charging it made a three-line coordinate conversion
+/// the second-worst function in a real workspace.
+///
+/// Indexing is **not** charged at all, constant or computed. It was, for
+/// one measured round, and the result is the reason the rule is gone:
+/// `v[i]` in a bounded loop is the shape of numeric and geometry code, so
+/// the charge did not find aborts — it found array math, and the cheapest
+/// way to pay it was to hide the index behind a one-line getter, which
+/// moves the score without moving the risk. `clippy::indexing_slicing` is
+/// the sensor for indexing, and it is per-site allowable, which is exactly
+/// what a metric with one number cannot be.
 fn is_constant_operand(expr: &syn::Expr) -> bool {
     match expr {
         syn::Expr::Lit(_) => true,
@@ -437,6 +448,13 @@ fn is_constant_operand(expr: &syn::Expr) -> bool {
             let name = seg.ident.to_string();
             !name.is_empty() && name.chars().all(|c| !c.is_lowercase())
         }),
+        // `buf[4..8]` is as constant as `buf[4]`: a slice index is an
+        // `Expr::Range`, and reading it as "computed" charged a fixed-size
+        // 84-byte packer 22 for eleven constant-bounds writes.
+        syn::Expr::Range(r) => {
+            r.start.as_deref().is_none_or(is_constant_operand)
+                && r.end.as_deref().is_none_or(is_constant_operand)
+        },
         _ => false,
     }
 }
@@ -595,26 +613,6 @@ impl<'ast> Visit<'ast> for CcCounter<'_> {
             self.charge(self.opts.abort_weight, node.method.span().start().line);
         }
         visit::visit_expr_method_call(self, node);
-    }
-
-    fn visit_expr_index(
-        &mut self,
-        node: &'ast syn::ExprIndex,
-    ) {
-        // Only a computed index is charged, the same line the `/` rule
-        // draws: a constant index is the compiler's problem on the shape
-        // that dominates numeric code (fixed-size arrays), and charging it
-        // buries the metric in false positives. Measured on a quaternion
-        // compose over `[i32; 4]` — 60 constant indices, CC 122 at 100%
-        // coverage, with no reachable panic anywhere in it. `v[i]` in a
-        // loop, the shape that does abort, still costs.
-        if !matches!(*node.index, syn::Expr::Lit(_)) {
-            self.charge(
-                self.opts.abort_weight,
-                node.bracket_token.span.open().start().line,
-            );
-        }
-        visit::visit_expr_index(self, node);
     }
 
     fn visit_expr_unsafe(
@@ -1258,31 +1256,30 @@ fn f(o: Option<u8>, r: Result<u8, u8>) -> u8 {
     }
 
     #[test]
-    fn computed_indexing_and_non_literal_division_are_aborts() {
+    fn division_by_a_non_constant_is_an_abort_and_indexing_is_never_one() {
+        assert_cc("fn f(a: u8, b: u8) -> u8 { a / b }", 1.0, 3.0);
+        assert_cc("fn f(a: u8, b: u8) -> u8 { a % b }", 1.0, 3.0);
+        // A divisor the reader can evaluate is not a hazard: a literal,
+        // and a path named like a constant, are the same thing here.
+        assert_cc("fn f(a: u8) -> u8 { a / 2 }", 1.0, 1.0);
+        assert_cc("fn f(a: f32) -> f32 { a / BRICK_SIZE_M }", 1.0, 1.0);
+        assert_cc("fn f(a: f32) -> f32 { a / (-SCALE as f32) }", 1.0, 1.0);
+        // A lowercase path is a binding, whatever it holds.
+        assert_cc("fn f(a: f32) -> f32 { a / scale }", 1.0, 3.0);
+        // Indexing is outside the profile, computed or not: charging it
+        // found array math rather than aborts, and the cheapest way to pay
+        // was to hide the index in a getter.
         assert_cc(
             "fn f(v: &[u8], i: usize) -> u8 { v[i] + v[i + 1] }",
             1.0,
-            5.0,
+            1.0,
         );
         assert_cc(
             "fn f(v: &[u8], a: usize, b: usize) -> &[u8] { &v[a..b] }",
             1.0,
-            3.0,
+            1.0,
         );
-        assert_cc("fn f(a: u8, b: u8) -> u8 { a / b }", 1.0, 3.0);
-        assert_cc("fn f(a: u8, b: u8) -> u8 { a % b }", 1.0, 3.0);
-        // The constant cases are the compiler's problem, not the reader's:
-        // a literal divisor it refuses outright, and a literal index it
-        // bounds-checks at compile time on the fixed-size arrays that
-        // dominate numeric code.
-        assert_cc("fn f(a: u8) -> u8 { a / 2 }", 1.0, 1.0);
         assert_cc("fn f(v: [u8; 4]) -> u8 { v[0] + v[1] + v[2] }", 1.0, 1.0);
-        // A named constant is as evaluable as the literal behind it.
-        assert_cc("fn f(a: f32) -> f32 { a / BRICK_SIZE_M }", 1.0, 1.0);
-        assert_cc("fn f(a: f32) -> f32 { a / (-SCALE as f32) }", 1.0, 1.0);
-        assert_cc("fn f(a: f32, s: f32) -> f32 { a / s }", 1.0, 3.0);
-        // A lowercase path is a binding, whatever it holds.
-        assert_cc("fn f(a: f32) -> f32 { a / scale }", 1.0, 3.0);
     }
 
     #[test]

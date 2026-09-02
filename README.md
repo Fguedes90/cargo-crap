@@ -257,7 +257,7 @@ uncovered-hints = false
 # incomparable.
 profile = "strict"
 # Per-rule overrides on top of the profile's defaults (strict shown).
-abort-weight            = 2.0   # .unwrap(), .expect(), computed e[i], `/` and `%` by a non-constant
+abort-weight            = 2.0   # .unwrap(), .expect(), `/` and `%` by a non-constant divisor
 documented-abort-weight = 1.0   # panic! / todo! / unreachable! / assert*!
 unsafe-weight           = 2.0   # `unsafe` block or `unsafe fn`
 count-closures          = true  # branches inside a closure body count for the enclosing fn
@@ -278,8 +278,8 @@ two blind spots the score cannot see past:
 
 - **It prices the abort at zero and the handler at one.** Three `?`
   cost CC 4; three `.unwrap()` cost CC 1. `strict` charges the hidden
-  abort (`unwrap` / `expect` / a computed index / `/` and `%` by a
-  non-constant divisor) `abort-weight`, and the self-naming one (`panic!` and the
+  abort (`unwrap` / `expect` / `/` and `%` by a non-constant divisor)
+  `abort-weight`, and the self-naming one (`panic!` and the
   `assert!` family) `documented-abort-weight`. The weight of `?` stays
   at 1.0: the inversion is fixed by making the abort expensive, not the
   propagation cheap.
@@ -291,13 +291,19 @@ two blind spots the score cannot see past:
   exhaustiveness. `strict` counts the first two and charges a `match`
   that is total by construction once.
 
-A constant index (`v[0]`) and a constant divisor (`x / 2`,
-`x / BRICK_SIZE_M` — a path with no lowercase letter reads as a constant)
-are not charged: they are the compiler's problem, and charging them buries
-the metric in false positives. Measured on a real workspace, the stricter
-reading put a fully covered quaternion compose over `[i32; 4]` at CC 122
-with no reachable panic in it. A computed index and a computed divisor —
-the shapes that do abort — still cost.
+A constant divisor (`x / 2`, `x / BRICK_SIZE_M` — a path with no lowercase
+letter reads as a constant) is not charged: it is the compiler's problem.
+A computed one still is.
+
+Indexing is charged **not at all**, and that is a measured retreat. The
+first draft charged every `e[i]`; against a real workspace it put 15 of
+the 18 worst functions in fully covered numeric code with no reachable
+panic (a quaternion compose over `[i32; 4]` at CC 122). Narrowed to
+computed indices, the remediation it produced was to hide the index behind
+a one-line getter — the score moved, the risk did not. `v[i]` in a bounded
+loop is the shape of array code, not the shape of a bug;
+`clippy::indexing_slicing` is the sensor for it, and unlike a
+single-number metric it can be allowed per site.
 
 A `match` is total by construction, syntactically: no guard anywhere, no
 `_`, and every arm is a variant pattern whose sub-patterns are
