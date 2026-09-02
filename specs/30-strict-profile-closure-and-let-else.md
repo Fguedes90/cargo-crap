@@ -1,6 +1,6 @@
 # Spec 30 — Strict profile: closures and `let … else`
 
-**Status:** Approved
+**Status:** Implemented
 **Effort:** Medium
 **Module:** `src/complexity.rs` (`CcCounter`)
 

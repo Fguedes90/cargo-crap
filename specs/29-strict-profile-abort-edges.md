@@ -1,6 +1,6 @@
 # Spec 29 — Strict profile: hidden aborts as decisions
 
-**Status:** Approved
+**Status:** Implemented
 **Effort:** Large
 **Module:** `src/complexity.rs` (`CcCounter`, `count_cyclomatic`), `src/config.rs`
 

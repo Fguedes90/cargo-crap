@@ -1,6 +1,6 @@
 # Spec 31 — Strict profile: total `match` counted once
 
-**Status:** Approved
+**Status:** Implemented
 **Effort:** Medium
 **Module:** `src/complexity.rs` (`CcCounter`)
 

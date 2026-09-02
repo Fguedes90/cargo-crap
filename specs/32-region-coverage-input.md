@@ -1,6 +1,6 @@
 # Spec 32 — Region coverage input (`--cov-json`)
 
-**Status:** Approved
+**Status:** Implemented
 **Effort:** Large
 **Module:** `src/coverage_json.rs` (new), `src/coverage.rs` (`FileCoverage`), `src/main.rs`
 

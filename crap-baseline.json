@@ -1,0 +1,2330 @@
+{
+  "$schema": "https://raw.githubusercontent.com/minikin/cargo-crap/main/schemas/report-v1.json",
+  "version": "0.4.3",
+  "entries": [
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::charge",
+      "line": 357,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::charge_macro",
+      "line": 375,
+      "cyclomatic": 4.0,
+      "coverage": 93.33333333333333,
+      "crap": 4.004740740740741,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 380,
+          "end": 380
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_arm",
+      "line": 561,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_binary",
+      "line": 575,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_closure",
+      "line": 653,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_for_loop",
+      "line": 524,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_if",
+      "line": 516,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_loop",
+      "line": 540,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_macro",
+      "line": 619,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_match",
+      "line": 548,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_method_call",
+      "line": 601,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_try",
+      "line": 593,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_unsafe",
+      "line": 611,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_while",
+      "line": 532,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_item",
+      "line": 666,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_local",
+      "line": 638,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_stmt_macro",
+      "line": 627,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CountOptions::default",
+      "line": 125,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CountOptions::for_profile",
+      "line": 102,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::score",
+      "line": 304,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::visit_impl_item_fn",
+      "line": 264,
+      "cyclomatic": 4.0,
+      "coverage": 91.30434782608695,
+      "crap": 4.010520259718912,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 269,
+          "end": 269
+        },
+        {
+          "start": 274,
+          "end": 274
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::visit_item_fn",
+      "line": 228,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::visit_item_impl",
+      "line": 252,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::visit_item_mod",
+      "line": 289,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "Profile::as_str",
+      "line": 63,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "analyze_file",
+      "line": 135,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "analyze_tree",
+      "line": 700,
+      "cyclomatic": 2.0,
+      "coverage": 85.71428571428571,
+      "crap": 2.011661807580175,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 718,
+          "end": 720
+        },
+        {
+          "start": 746,
+          "end": 748
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "build_exclude_set",
+      "line": 680,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "exempt_lines",
+      "line": 171,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "has_attr",
+      "line": 186,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "impl_type_name",
+      "line": 207,
+      "cyclomatic": 2.0,
+      "coverage": 80.0,
+      "crap": 2.032,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 211,
+          "end": 211
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_abort_method",
+      "line": 399,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_cfg_test",
+      "line": 197,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_constant_operand",
+      "line": 441,
+      "cyclomatic": 7.0,
+      "coverage": 100.0,
+      "crap": 7.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_documented_abort",
+      "line": 406,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_irrefutable_pattern",
+      "line": 504,
+      "cyclomatic": 7.0,
+      "coverage": 100.0,
+      "crap": 7.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_path_pattern",
+      "line": 489,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_total_match",
+      "line": 465,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_unit_variant_ident",
+      "line": 478,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/config.rs",
+      "function": "Config::count_options",
+      "line": 159,
+      "cyclomatic": 11.0,
+      "coverage": 87.09677419354838,
+      "crap": 11.259944278473364,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 176,
+          "end": 176
+        },
+        {
+          "start": 182,
+          "end": 182
+        },
+        {
+          "start": 185,
+          "end": 185
+        },
+        {
+          "start": 188,
+          "end": 188
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/config.rs",
+      "function": "Config::metric_settings",
+      "line": 196,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/config.rs",
+      "function": "load",
+      "line": 218,
+      "cyclomatic": 8.0,
+      "coverage": 93.75,
+      "crap": 8.015625,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 220,
+          "end": 220
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "FileCoverage::coverage_in_span",
+      "line": 156,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "FileCoverage::merge_from",
+      "line": 103,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "FileCoverage::normalize_regions",
+      "line": 124,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "FileCoverage::regions_in_span",
+      "line": 137,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "FileCoverage::uncovered_ranges_in_span",
+      "line": 191,
+      "cyclomatic": 7.0,
+      "coverage": 100.0,
+      "crap": 7.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "FileCoverage::uncovered_region_ranges",
+      "line": 225,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "LineRange::list",
+      "line": 50,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "Region::key",
+      "line": 74,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage.rs",
+      "function": "parse_lcov",
+      "line": 251,
+      "cyclomatic": 12.0,
+      "coverage": 100.0,
+      "crap": 12.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage_json.rs",
+      "function": "attribute",
+      "line": 109,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/coverage_json.rs",
+      "function": "parse_llvm_cov_json",
+      "line": 72,
+      "cyclomatic": 9.0,
+      "coverage": 100.0,
+      "crap": 9.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "DeltaReport::regression_count",
+      "line": 109,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "DeltaReport::sort",
+      "line": 87,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "EntryKey::new",
+      "line": 166,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "apply_move_pairing",
+      "line": 241,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "apply_suffix_pairing",
+      "line": 260,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "build_pass_one_entry",
+      "line": 192,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "classify_score",
+      "line": 176,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "collect_removed",
+      "line": 421,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "common_suffix_len",
+      "line": 273,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "compute_delta",
+      "line": 461,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "current_key",
+      "line": 149,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "load_baseline",
+      "line": 118,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "pass_one_exact",
+      "line": 216,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "pass_suffix_match",
+      "line": 330,
+      "cyclomatic": 8.0,
+      "coverage": 97.2972972972973,
+      "crap": 8.001263498706889,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 370,
+          "end": 370
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "pass_two_name_fallback",
+      "line": 380,
+      "cyclomatic": 8.0,
+      "coverage": 97.14285714285714,
+      "crap": 8.001492711370263,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 412,
+          "end": 412
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "path_key",
+      "line": 143,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "removed_key",
+      "line": 154,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/delta.rs",
+      "function": "unique_best_by_suffix",
+      "line": 289,
+      "cyclomatic": 10.0,
+      "coverage": 100.0,
+      "crap": 10.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "BaselineFilter::is_excluded",
+      "line": 725,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "BaselineFilter::new",
+      "line": 703,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "BaselineFilter::retain",
+      "line": 744,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "Format::from",
+      "line": 257,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "MemberScope::is_out_of_scope",
+      "line": 526,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "MemberScope::new",
+      "line": 495,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "MissingCoveragePolicy::from",
+      "line": 209,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "SortOrder::from",
+      "line": 225,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "analyze_sources",
+      "line": 404,
+      "cyclomatic": 6.0,
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "analyze_workspace_members",
+      "line": 433,
+      "cyclomatic": 6.0,
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "apply_filters",
+      "line": 657,
+      "cyclomatic": 6.0,
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "apply_member_scope",
+      "line": 1094,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "assign_crate_names",
+      "line": 630,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "build_allow_set",
+      "line": 322,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "build_path_set",
+      "line": 338,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "components_contain",
+      "line": 567,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "do_render",
+      "line": 1107,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "effective_excludes",
+      "line": 282,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "effective_summary",
+      "line": 1037,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "exceeds_abort_cap",
+      "line": 1367,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "is_path_allow_pattern",
+      "line": 314,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "load_coverage",
+      "line": 759,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "load_filtered_baseline",
+      "line": 1048,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "main",
+      "line": 1170,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "nested_member_excludes",
+      "line": 614,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "open_output",
+      "line": 799,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "parse_and_load_config",
+      "line": 1158,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "parse_and_validate",
+      "line": 1193,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "parse_workspace_metadata",
+      "line": 846,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "path_is_ignored",
+      "line": 975,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "path_set_matches_suffix",
+      "line": 360,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "require_baseline",
+      "line": 961,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "resolve_bool",
+      "line": 952,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "resolve_color",
+      "line": 783,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "resolve_source_links",
+      "line": 1139,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "run",
+      "line": 1228,
+      "cyclomatic": 13.0,
+      "coverage": 98.96907216494846,
+      "crap": 13.000185170373179,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 1311,
+          "end": 1311
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "scope_warning_lead",
+      "line": 877,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "score_gate_tripped",
+      "line": 1356,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "select_members",
+      "line": 581,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "spinner",
+      "line": 812,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "stray_lines",
+      "line": 902,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "strict_summary",
+      "line": 1216,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "strip_cargo_subcommand",
+      "line": 303,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "validate_args",
+      "line": 1000,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "validate_merged_values",
+      "line": 986,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "warn_profile_mismatch",
+      "line": 1078,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "warn_scope_mismatch",
+      "line": 929,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/main.rs",
+      "function": "workspace_members",
+      "line": 829,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "PathIndex::build",
+      "line": 324,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "PathIndex::lookup",
+      "line": 353,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "StrayFiles::new",
+      "line": 156,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "fast_path_key",
+      "line": 390,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "file_order_key",
+      "line": 101,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "insert_or_merge",
+      "line": 411,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "is_zero",
+      "line": 79,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "merge",
+      "line": 201,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "normalized",
+      "line": 402,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "path_has_suffix",
+      "line": 437,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/merge.rs",
+      "function": "sort_entries",
+      "line": 114,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report.rs",
+      "function": "RenderOptions::default",
+      "line": 135,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report.rs",
+      "function": "crappy_count",
+      "line": 241,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report.rs",
+      "function": "render",
+      "line": 153,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report.rs",
+      "function": "render_delta",
+      "line": 186,
+      "cyclomatic": 8.0,
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report.rs",
+      "function": "write_pr_comment_marker",
+      "line": 232,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/github.rs",
+      "function": "gha_escape",
+      "line": 115,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/github.rs",
+      "function": "gha_escape_property",
+      "line": 123,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/github.rs",
+      "function": "render_delta_github",
+      "line": 57,
+      "cyclomatic": 9.0,
+      "coverage": 97.2972972972973,
+      "crap": 9.001599115550905,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 108,
+          "end": 108
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/github.rs",
+      "function": "render_github",
+      "line": 17,
+      "cyclomatic": 6.0,
+      "coverage": 95.65217391304348,
+      "crap": 6.002958823045944,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 52,
+          "end": 52
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "build_delta_row",
+      "line": 240,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "build_delta_table",
+      "line": 203,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "build_row",
+      "line": 97,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "build_table",
+      "line": 63,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "render_delta_human",
+      "line": 144,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "render_human",
+      "line": 16,
+      "cyclomatic": 6.0,
+      "coverage": 95.45454545454545,
+      "crap": 6.0033809166040575,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 35,
+          "end": 35
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "write_delta_body",
+      "line": 165,
+      "cyclomatic": 7.0,
+      "coverage": 100.0,
+      "crap": 7.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "write_delta_summary",
+      "line": 279,
+      "cyclomatic": 2.0,
+      "coverage": 97.5609756097561,
+      "crap": 2.0000580374631824,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 319,
+          "end": 319
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "write_removed_section",
+      "line": 186,
+      "cyclomatic": 4.0,
+      "coverage": 91.66666666666666,
+      "crap": 4.0092592592592595,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 198,
+          "end": 198
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "write_strict_footer",
+      "line": 42,
+      "cyclomatic": 4.0,
+      "coverage": 93.33333333333333,
+      "crap": 4.004740740740741,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 58,
+          "end": 58
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/human.rs",
+      "function": "write_summary",
+      "line": 117,
+      "cyclomatic": 4.0,
+      "coverage": 88.23529411764706,
+      "crap": 4.026053327905557,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 130,
+          "end": 130
+        },
+        {
+          "start": 139,
+          "end": 139
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/json.rs",
+      "function": "render_delta_json",
+      "line": 85,
+      "cyclomatic": 3.0,
+      "coverage": 94.11764705882352,
+      "crap": 3.0018318746183597,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 116,
+          "end": 116
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/json.rs",
+      "function": "render_json",
+      "line": 66,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/links.rs",
+      "function": "SourceLinks::new",
+      "line": 40,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/links.rs",
+      "function": "SourceLinks::url_for",
+      "line": 57,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/links.rs",
+      "function": "link_path",
+      "line": 83,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/links.rs",
+      "function": "linkify",
+      "line": 96,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "render_delta_markdown",
+      "line": 213,
+      "cyclomatic": 7.0,
+      "coverage": 88.88888888888889,
+      "crap": 7.06721536351166,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 223,
+          "end": 224
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "render_markdown",
+      "line": 99,
+      "cyclomatic": 7.0,
+      "coverage": 100.0,
+      "crap": 7.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_delta_entries_table",
+      "line": 144,
+      "cyclomatic": 4.0,
+      "coverage": 95.83333333333334,
+      "crap": 4.001157407407407,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 170,
+          "end": 170
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_absolute_heading",
+      "line": 18,
+      "cyclomatic": 5.0,
+      "coverage": 92.3076923076923,
+      "crap": 5.011379153390988,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 29,
+          "end": 29
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_absolute_summary",
+      "line": 35,
+      "cyclomatic": 5.0,
+      "coverage": 87.5,
+      "crap": 5.048828125,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 46,
+          "end": 46
+        },
+        {
+          "start": 51,
+          "end": 51
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_delta_body",
+      "line": 236,
+      "cyclomatic": 7.0,
+      "coverage": 94.73684210526315,
+      "crap": 7.007143898527482,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 249,
+          "end": 249
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_delta_heading",
+      "line": 131,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_delta_stats",
+      "line": 175,
+      "cyclomatic": 3.0,
+      "coverage": 97.22222222222221,
+      "crap": 3.000192901234568,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 209,
+          "end": 209
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_entries_table",
+      "line": 56,
+      "cyclomatic": 6.0,
+      "coverage": 96.7741935483871,
+      "crap": 6.001208418649928,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 92,
+          "end": 92
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/markdown.rs",
+      "function": "write_markdown_removed",
+      "line": 119,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/per_crate.rs",
+      "function": "crate_rollups",
+      "line": 21,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/per_crate.rs",
+      "function": "has_crate_data",
+      "line": 46,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/per_crate.rs",
+      "function": "write_per_crate_human",
+      "line": 52,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/per_crate.rs",
+      "function": "write_per_crate_markdown",
+      "line": 91,
+      "cyclomatic": 9.0,
+      "coverage": 100.0,
+      "crap": 9.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "DeltaBuckets::common_prefix",
+      "line": 256,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "DeltaBuckets::from_report",
+      "line": 195,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "above_threshold_sorted",
+      "line": 507,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "abs_delta",
+      "line": 180,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "compute_render_prefix",
+      "line": 62,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "longest_common_path_prefix",
+      "line": 34,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "render_delta_pr_comment",
+      "line": 452,
+      "cyclomatic": 8.0,
+      "coverage": 89.47368421052632,
+      "crap": 8.074646449919813,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 461,
+          "end": 462
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "render_pr_comment",
+      "line": 536,
+      "cyclomatic": 6.0,
+      "coverage": 85.0,
+      "crap": 6.1215,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 545,
+          "end": 546
+        },
+        {
+          "start": 553,
+          "end": 553
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "strip_to_display",
+      "line": 77,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "unchanged_count",
+      "line": 442,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_abs_headline",
+      "line": 490,
+      "cyclomatic": 5.0,
+      "coverage": 92.3076923076923,
+      "crap": 5.011379153390988,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 501,
+          "end": 501
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_abs_row",
+      "line": 127,
+      "cyclomatic": 2.0,
+      "coverage": 95.23809523809523,
+      "crap": 2.000431918799266,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 150,
+          "end": 150
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_abs_table",
+      "line": 516,
+      "cyclomatic": 6.0,
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_breakdown",
+      "line": 288,
+      "cyclomatic": 2.0,
+      "coverage": 93.33333333333333,
+      "crap": 2.0011851851851854,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 302,
+          "end": 302
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_delta_headline",
+      "line": 275,
+      "cyclomatic": 5.0,
+      "coverage": 100.0,
+      "crap": 5.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_hot_spots_section",
+      "line": 386,
+      "cyclomatic": 11.0,
+      "coverage": 95.83333333333334,
+      "crap": 11.008752893518519,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 401,
+          "end": 401
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_improved_section",
+      "line": 331,
+      "cyclomatic": 11.0,
+      "coverage": 96.0,
+      "crap": 11.007744,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 347,
+          "end": 347
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_moved_section",
+      "line": 362,
+      "cyclomatic": 11.0,
+      "coverage": 100.0,
+      "crap": 11.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_primary",
+      "line": 306,
+      "cyclomatic": 6.0,
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_removed_section",
+      "line": 413,
+      "cyclomatic": 10.0,
+      "coverage": 91.66666666666666,
+      "crap": 10.05787037037037,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 426,
+          "end": 426
+        },
+        {
+          "start": 434,
+          "end": 434
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_row",
+      "line": 91,
+      "cyclomatic": 2.0,
+      "coverage": 96.55172413793103,
+      "crap": 2.0001640083644268,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 122,
+          "end": 122
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_pr_comment_secondary_sections",
+      "line": 476,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_truncation_footer",
+      "line": 155,
+      "cyclomatic": 3.0,
+      "coverage": 90.0,
+      "crap": 3.009,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 163,
+          "end": 163
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/pr_comment.rs",
+      "function": "write_truncation_if_capped",
+      "line": 167,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/sarif.rs",
+      "function": "build_driver",
+      "line": 138,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/sarif.rs",
+      "function": "build_result",
+      "line": 159,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/sarif.rs",
+      "function": "format_message",
+      "line": 179,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/sarif.rs",
+      "function": "normalize_path",
+      "line": 191,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/sarif.rs",
+      "function": "render_sarif",
+      "line": 111,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/shields.rs",
+      "function": "format_threshold",
+      "line": 31,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/shields.rs",
+      "function": "render_delta_shields",
+      "line": 50,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/shields.rs",
+      "function": "render_shields",
+      "line": 39,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/shields.rs",
+      "function": "write_badge",
+      "line": 63,
+      "cyclomatic": 6.0,
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/summary.rs",
+      "function": "render_delta_summary",
+      "line": 60,
+      "cyclomatic": 2.0,
+      "coverage": 97.61904761904762,
+      "crap": 2.000053989849908,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 101,
+          "end": 101
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/summary.rs",
+      "function": "render_summary",
+      "line": 19,
+      "cyclomatic": 6.0,
+      "coverage": 92.0,
+      "crap": 6.018432,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 42,
+          "end": 42
+        },
+        {
+          "start": 54,
+          "end": 54
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/test_support.rs",
+      "function": "opts",
+      "line": 15,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/test_support.rs",
+      "function": "sample",
+      "line": 29,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/test_support.rs",
+      "function": "sample_with_uncovered",
+      "line": 60,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "Grade::color",
+      "line": 84,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "Grade::icon",
+      "line": 76,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "Grade::of",
+      "line": 63,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "apply_table_styling",
+      "line": 44,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "color_enabled",
+      "line": 23,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "coverage_bar",
+      "line": 96,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "delta_display",
+      "line": 218,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "format_location_with_prev",
+      "line": 246,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "set_color_enabled",
+      "line": 19,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "signed_delta",
+      "line": 231,
+      "cyclomatic": 3.0,
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "styled",
+      "line": 29,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "uncovered_cell_suffix",
+      "line": 153,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "uncovered_display",
+      "line": 120,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "uncovered_header_suffix",
+      "line": 143,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "visible_delta_entries",
+      "line": 201,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "write_abs_gfm_header",
+      "line": 167,
+      "cyclomatic": 3.0,
+      "coverage": 90.9090909090909,
+      "crap": 3.006761833208114,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 175,
+          "end": 175
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/report/types.rs",
+      "function": "write_delta_gfm_header",
+      "line": 182,
+      "cyclomatic": 3.0,
+      "coverage": 90.9090909090909,
+      "crap": 3.006761833208114,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 190,
+          "end": 190
+        }
+      ]
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/score.rs",
+      "function": "Severity::classify",
+      "line": 63,
+      "cyclomatic": 2.0,
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/score.rs",
+      "function": "crap",
+      "line": 44,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    }
+  ],
+  "diagnostics": {
+    "analyzed_files": 21,
+    "lcov_files": 21,
+    "matched_files": 21,
+    "source_only": {
+      "count": 0,
+      "examples": []
+    },
+    "lcov_only": {
+      "count": 0,
+      "examples": []
+    }
+  }
+}
