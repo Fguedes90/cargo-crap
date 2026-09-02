@@ -1,6 +1,6 @@
 # Spec 34 — Trait default methods enter the measurement
 
-**Status:** Approved
+**Status:** Implemented
 **Effort:** Small
 **Module:** `src/complexity.rs`
 

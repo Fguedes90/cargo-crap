@@ -5,7 +5,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::charge",
-      "line": 357,
+      "line": 460,
       "cyclomatic": 3.0,
       "coverage": 100.0,
       "crap": 3.0,
@@ -14,22 +14,22 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::charge_macro",
-      "line": 375,
+      "line": 478,
       "cyclomatic": 4.0,
       "coverage": 93.33333333333333,
       "crap": 4.004740740740741,
       "crate": "cargo-crap",
       "uncovered": [
         {
-          "start": 380,
-          "end": 380
+          "start": 483,
+          "end": 483
         }
       ]
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_arm",
-      "line": 561,
+      "line": 664,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -38,7 +38,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_binary",
-      "line": 575,
+      "line": 678,
       "cyclomatic": 5.0,
       "coverage": 100.0,
       "crap": 5.0,
@@ -47,7 +47,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_closure",
-      "line": 653,
+      "line": 756,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -56,7 +56,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_for_loop",
-      "line": 524,
+      "line": 627,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -65,24 +65,6 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_if",
-      "line": 516,
-      "cyclomatic": 1.0,
-      "coverage": 100.0,
-      "crap": 1.0,
-      "crate": "cargo-crap"
-    },
-    {
-      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
-      "function": "CcCounter::visit_expr_loop",
-      "line": 540,
-      "cyclomatic": 1.0,
-      "coverage": 100.0,
-      "crap": 1.0,
-      "crate": "cargo-crap"
-    },
-    {
-      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
-      "function": "CcCounter::visit_expr_macro",
       "line": 619,
       "cyclomatic": 1.0,
       "coverage": 100.0,
@@ -91,8 +73,26 @@
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_loop",
+      "line": 643,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "CcCounter::visit_expr_macro",
+      "line": 722,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_match",
-      "line": 548,
+      "line": 651,
       "cyclomatic": 3.0,
       "coverage": 100.0,
       "crap": 3.0,
@@ -101,7 +101,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_method_call",
-      "line": 601,
+      "line": 704,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -110,7 +110,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_try",
-      "line": 593,
+      "line": 696,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -119,7 +119,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_unsafe",
-      "line": 611,
+      "line": 714,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -128,7 +128,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_expr_while",
-      "line": 532,
+      "line": 635,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -137,7 +137,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_item",
-      "line": 666,
+      "line": 769,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -146,7 +146,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_local",
-      "line": 638,
+      "line": 741,
       "cyclomatic": 3.0,
       "coverage": 100.0,
       "crap": 3.0,
@@ -155,7 +155,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "CcCounter::visit_stmt_macro",
-      "line": 627,
+      "line": 730,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -182,7 +182,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "FunctionVisitor::score",
-      "line": 304,
+      "line": 407,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -191,26 +191,26 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "FunctionVisitor::visit_impl_item_fn",
-      "line": 264,
+      "line": 326,
       "cyclomatic": 4.0,
       "coverage": 91.30434782608695,
       "crap": 4.010520259718912,
       "crate": "cargo-crap",
       "uncovered": [
         {
-          "start": 269,
-          "end": 269
+          "start": 331,
+          "end": 331
         },
         {
-          "start": 274,
-          "end": 274
+          "start": 336,
+          "end": 336
         }
       ]
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "FunctionVisitor::visit_item_fn",
-      "line": 228,
+      "line": 290,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -219,7 +219,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "FunctionVisitor::visit_item_impl",
-      "line": 252,
+      "line": 314,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -228,11 +228,35 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "FunctionVisitor::visit_item_mod",
-      "line": 289,
+      "line": 392,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
       "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::visit_item_trait",
+      "line": 351,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "FunctionVisitor::visit_trait_item_fn",
+      "line": 361,
+      "cyclomatic": 4.0,
+      "coverage": 96.0,
+      "crap": 4.001024,
+      "crate": "cargo-crap",
+      "uncovered": [
+        {
+          "start": 377,
+          "end": 377
+        }
+      ]
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
@@ -246,7 +270,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "analyze_file",
-      "line": 135,
+      "line": 148,
       "cyclomatic": 3.0,
       "coverage": 100.0,
       "crap": 3.0,
@@ -255,26 +279,26 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "analyze_tree",
-      "line": 700,
+      "line": 803,
       "cyclomatic": 2.0,
       "coverage": 85.71428571428571,
       "crap": 2.011661807580175,
       "crate": "cargo-crap",
       "uncovered": [
         {
-          "start": 718,
-          "end": 720
+          "start": 821,
+          "end": 823
         },
         {
-          "start": 746,
-          "end": 748
+          "start": 849,
+          "end": 851
         }
       ]
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "build_exclude_set",
-      "line": 680,
+      "line": 783,
       "cyclomatic": 3.0,
       "coverage": 100.0,
       "crap": 3.0,
@@ -283,7 +307,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "exempt_lines",
-      "line": 171,
+      "line": 184,
       "cyclomatic": 4.0,
       "coverage": 100.0,
       "crap": 4.0,
@@ -291,32 +315,23 @@
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
-      "function": "has_attr",
-      "line": 186,
-      "cyclomatic": 1.0,
-      "coverage": 100.0,
-      "crap": 1.0,
-      "crate": "cargo-crap"
-    },
-    {
-      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "impl_type_name",
-      "line": 207,
+      "line": 268,
       "cyclomatic": 2.0,
       "coverage": 80.0,
       "crap": 2.032,
       "crate": "cargo-crap",
       "uncovered": [
         {
-          "start": 211,
-          "end": 211
+          "start": 272,
+          "end": 272
         }
       ]
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_abort_method",
-      "line": 399,
+      "line": 502,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -324,17 +339,8 @@
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
-      "function": "is_cfg_test",
-      "line": 197,
-      "cyclomatic": 1.0,
-      "coverage": 100.0,
-      "crap": 1.0,
-      "crate": "cargo-crap"
-    },
-    {
-      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_constant_operand",
-      "line": 441,
+      "line": 544,
       "cyclomatic": 7.0,
       "coverage": 100.0,
       "crap": 7.0,
@@ -343,7 +349,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_documented_abort",
-      "line": 406,
+      "line": 509,
       "cyclomatic": 1.0,
       "coverage": 100.0,
       "crap": 1.0,
@@ -352,7 +358,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_irrefutable_pattern",
-      "line": 504,
+      "line": 607,
       "cyclomatic": 7.0,
       "coverage": 100.0,
       "crap": 7.0,
@@ -361,7 +367,7 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_path_pattern",
-      "line": 489,
+      "line": 592,
       "cyclomatic": 8.0,
       "coverage": 100.0,
       "crap": 8.0,
@@ -369,8 +375,26 @@
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_test_fn",
+      "line": 220,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "is_test_only_cfg",
+      "line": 240,
+      "cyclomatic": 1.0,
+      "coverage": 100.0,
+      "crap": 1.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_total_match",
-      "line": 465,
+      "line": 568,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -379,7 +403,16 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
       "function": "is_unit_variant_ident",
-      "line": 478,
+      "line": 581,
+      "cyclomatic": 4.0,
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "cargo-crap"
+    },
+    {
+      "file": "/Users/francisgoncalves/dev/cargo-crap/src/complexity.rs",
+      "function": "meta_is_test_only",
+      "line": 252,
       "cyclomatic": 4.0,
       "coverage": 100.0,
       "crap": 4.0,
@@ -388,34 +421,34 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/config.rs",
       "function": "Config::count_options",
-      "line": 159,
+      "line": 167,
       "cyclomatic": 11.0,
       "coverage": 87.09677419354838,
       "crap": 11.259944278473364,
       "crate": "cargo-crap",
       "uncovered": [
         {
-          "start": 176,
-          "end": 176
+          "start": 184,
+          "end": 184
         },
         {
-          "start": 182,
-          "end": 182
+          "start": 190,
+          "end": 190
         },
         {
-          "start": 185,
-          "end": 185
+          "start": 193,
+          "end": 193
         },
         {
-          "start": 188,
-          "end": 188
+          "start": 196,
+          "end": 196
         }
       ]
     },
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/config.rs",
       "function": "Config::metric_settings",
-      "line": 196,
+      "line": 204,
       "cyclomatic": 2.0,
       "coverage": 100.0,
       "crap": 2.0,
@@ -424,15 +457,15 @@
     {
       "file": "/Users/francisgoncalves/dev/cargo-crap/src/config.rs",
       "function": "load",
-      "line": 218,
+      "line": 229,
       "cyclomatic": 8.0,
       "coverage": 93.75,
       "crap": 8.015625,
       "crate": "cargo-crap",
       "uncovered": [
         {
-          "start": 220,
-          "end": 220
+          "start": 231,
+          "end": 231
         }
       ]
     },

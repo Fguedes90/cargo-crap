@@ -1,6 +1,6 @@
 # Spec 33 — Test-code recognition
 
-**Status:** Approved
+**Status:** Implemented
 **Effort:** Medium
 **Module:** `src/complexity.rs`, `src/config.rs`
 
