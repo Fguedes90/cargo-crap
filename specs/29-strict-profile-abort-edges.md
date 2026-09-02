@@ -9,8 +9,8 @@
 `CcCounter` counts `if`/`match`-arm/loop/`&&`/`||`/`?` as decisions, which is
 classical McCabe. It is silent about a whole class of control flow that
 *aborts the function instead of branching within it*: `.unwrap()`,
-`.expect(msg)`, index/slice operations, integer division/remainder by a
-non-literal divisor, the `panic!`-family macros, and `unsafe` blocks. Every
+`.expect(msg)`, computed index/slice operations, division/remainder by a
+non-constant divisor, the `panic!`-family macros, and `unsafe` blocks. Every
 one of these is a real decision point — "does this succeed, or does the
 process/thread die here?" — but none of them touches an `if`, `match`, or
 `?`, so today they cost exactly 0. Measured against the installed 0.2.2
@@ -49,7 +49,7 @@ in `.cargo-crap.toml` overrides its profile default, key by key. `classic`
 
 |construct|weight|
 |---|---|
-|`.unwrap()`, `.expect(…)`, index `e[i]`, slice `&e[a..b]`, `/` and `%` with a non-literal divisor|`abort-weight` (2.0 in strict)|
+|`.unwrap()`, `.expect(…)`, computed index `e[i]`, slice `&e[a..b]`, `/` and `%` with a non-constant divisor|`abort-weight` (2.0 in strict)|
 |`panic!`, `todo!`, `unimplemented!`, `unreachable!`, `assert!`, `assert_eq!`, `assert_ne!`, `debug_assert!`, `debug_assert_eq!`, `debug_assert_ne!`|`documented-abort-weight` (1.0 in strict)|
 |`unsafe` block / `unsafe fn`|`unsafe-weight` (2.0 in strict)|
 |any abort above on a line carrying `// crap-ok: <reason>`|0, and an exoneration counter increments|
@@ -106,23 +106,44 @@ Then  `a`'s CC is 7.0 (base 1 + 3 × 2.0) and `b`'s CC is 4.0 (unchanged —
       `?` is not an abort under this spec)
 ```
 
-### Scenario: Indexing counts as an abort
+### Scenario: A computed index counts as an abort, a constant one does not
+
+Measured correction, from the first run of this profile over a real
+workspace: charging every index made a quaternion compose over
+`[i32; 4]` — 60 constant indices, 100% covered, no reachable panic — the
+worst function in the report at CC 122. A constant index into the
+fixed-size arrays that dominate numeric code is the compiler's problem,
+exactly like a literal divisor. A computed one is the shape that aborts.
 
 ```
-Given a function body `v[1] + v[2] + v[3]`
+Given a function body `v[i] + v[i + 1]` (`i` a variable)
 And   `profile = "strict"`
 When  complexity is analyzed
-Then  the CC is 7.0 (base 1 + 3 × abort-weight 2.0)
+Then  the CC is 5.0 (base 1 + 2 × abort-weight 2.0)
 And   under `profile = "classic"` the same body scores CC 1.0
+Given the body `v[0] + v[1] + v[2]` instead
+When  complexity is analyzed under `profile = "strict"`
+Then  the CC is 1.0 — every index is a literal
+And   a slice `&v[a..b]` with computed bounds is charged once
 ```
 
-### Scenario: Division by a literal is free, by a variable is an abort
+### Scenario: Division by a constant is free, by a variable is an abort
+
+A divisor the reader can evaluate is not a runtime hazard, and a named
+constant is as evaluable as the literal behind it: the same workspace run
+scored a three-line coordinate conversion (`pos.x / BRICK_SIZE_M`, three
+times) at CC 7 and CRAP 56. The constant test is the naming convention —
+a path whose last segment has no lowercase letter — for the same reason
+the unit-variant test is (see spec 31): there is no type resolution here.
 
 ```
 Given a function body `let x = a / 2;`
 And   `profile = "strict"`
 When  complexity is analyzed
 Then  the CC is 1.0 — the divisor `2` is a literal
+Given the body `let x = a / BRICK_SIZE_M;`
+When  complexity is analyzed under `profile = "strict"`
+Then  the CC is 1.0 — the divisor is named like a constant
 Given the same function with body `let x = a / b;` (`b` a variable)
 When  complexity is analyzed under `profile = "strict"`
 Then  the CC is 3.0 (base 1 + abort-weight 2.0)
@@ -241,7 +262,7 @@ And   the same applies to `documented-abort-weight` and `unsafe-weight`
 
 - [ ] **T1 — `Profile` enum and `CountOptions` struct with per-profile defaults.** Scenarios: _Default classic profile is unchanged_. Tests: unit + property.
 - [ ] **T2 — Thread `CountOptions` through `analyze_file`/`analyze_tree`/`CcCounter`; `count_cyclomatic` accumulator becomes `f64`.** Needs: T1. Scenarios: _Default classic profile is unchanged_. Tests: unit + acceptance.
-- [ ] **T3 — Abort weighting: `.unwrap()`/`.expect()`, index, slice, non-literal `/`/`%`.** Needs: T2. Scenarios: _Three `.unwrap()` cost more than three `?`_, _Indexing counts as an abort_, _Division by a literal is free, by a variable is an abort_, _`matches!` rides `total-match-once`, and non-aborting `unwrap_or*`/`expect_err` never abort_. Tests: unit + property.
+- [ ] **T3 — Abort weighting: `.unwrap()`/`.expect()`, index, slice, non-literal `/`/`%`.** Needs: T2. Scenarios: _Three `.unwrap()` cost more than three `?`_, _A computed index counts as an abort, a constant one does not_, _Division by a constant is free, by a variable is an abort_, _`matches!` rides `total-match-once`, and non-aborting `unwrap_or*`/`expect_err` never abort_. Tests: unit + property.
 - [ ] **T4 — Documented-abort macro weighting (`panic!`/`todo!`/`unimplemented!`/`unreachable!`/`assert*!`/`debug_assert*!`) and `unsafe`-block/`unsafe fn` weighting.** Needs: T2. Scenarios: _`unsafe` blocks and functions count_. Tests: unit + property.
 - [ ] **T5 — `// crap-ok: <reason>` line-scan and exemption application to T3/T4 sites.** Needs: T3, T4. Scenarios: _A marker with a reason exonerates the abort_, _A marker without a reason does not exonerate_, _A marker exonerates the following line too_. Tests: unit + property.
 - [ ] **T6 — `abort_ok` field on `FunctionComplexity`/`CrapEntry`, JSON envelope, human footer.** Needs: T5. Scenarios: _Exoneration count appears in output_. Tests: unit + acceptance.
@@ -283,7 +304,7 @@ on top of the profile default, one key at a time — never all-or-nothing.
 `CcCounter` gains `opts: CountOptions` and `exempt_lines: &HashSet<usize>`.
 New visitor methods: `visit_expr_method_call` (match `unwrap`/`expect` by
 method name; explicitly exclude `unwrap_or`/`unwrap_or_else`/
-`unwrap_or_default`/`expect_err`), `visit_expr_index` (always an abort —
+`unwrap_or_default`/`expect_err`), `visit_expr_index` (an abort unless the index is a literal —
 there is no type resolution here to distinguish `Vec` from a
 compile-time-bounded array; the marker covers legitimate fixed-size
 cases), `visit_expr_binary` for `BinOp::Div`/`BinOp::Rem` (abort only when
@@ -338,7 +359,13 @@ uses, so both conditions can independently drive exit 1.
   with per-site `allow`, not this metric.
 - No handling of `.await` — a suspension point, not a decision.
 - No type resolution to distinguish a `Vec` index (can panic) from a
-  fixed-size array index (cannot) — the marker is the escape hatch.
+  fixed-size array index (cannot), nor an integer division (can panic)
+  from a float one (cannot). Both rules fall back on what is visible in
+  the syntax: a constant index or divisor is not charged, a computed one
+  is, and the marker is the escape hatch for the rest. Measured cost of
+  the stricter reading it replaces, on a real workspace: 15 of the 18
+  worst-scoring functions were fully covered numeric code with no
+  reachable panic in them.
 - No change to `?`'s weight; that is spec 27's `try-weight`, still
   Proposed, and orthogonal to this spec.
 - No CLI flag for any new key.

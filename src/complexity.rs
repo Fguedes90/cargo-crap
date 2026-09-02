@@ -419,6 +419,28 @@ fn is_documented_abort(ident: &syn::Ident) -> bool {
     .any(|name| ident == name)
 }
 
+/// Whether an operand is a value the reader can evaluate without running
+/// the program: a literal, or a path named like a constant
+/// (`SCREAMING_SNAKE_CASE`, the same naming-convention tell the unit-variant
+/// rule leans on). Casts and parentheses around one still count as one.
+///
+/// Only used for the divisor: `x / BRICK_SIZE_M` has no more of an abort in
+/// it than `x / 4.0`, and charging it made a three-line coordinate
+/// conversion the second-worst function in a real workspace.
+fn is_constant_operand(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::Lit(_) => true,
+        syn::Expr::Paren(p) => is_constant_operand(&p.expr),
+        syn::Expr::Cast(c) => is_constant_operand(&c.expr),
+        syn::Expr::Unary(u) => is_constant_operand(&u.expr),
+        syn::Expr::Path(p) => p.path.segments.last().is_some_and(|seg| {
+            let name = seg.ident.to_string();
+            !name.is_empty() && name.chars().all(|c| !c.is_lowercase())
+        }),
+        _ => false,
+    }
+}
+
 /// A `match` the compiler proves exhaustive by construction: no guard
 /// anywhere, and every arm is a path pattern (or an or-pattern of them)
 /// whose sub-patterns are irrefutable. Exhaustiveness over an enum is the
@@ -545,12 +567,11 @@ impl<'ast> Visit<'ast> for CcCounter<'_> {
     ) {
         match node.op {
             BinOp::And(_) | BinOp::Or(_) => self.count += 1.0,
-            // Division by anything but a literal can abort at runtime; the
-            // literal case is the one the compiler already rejects.
-            BinOp::Div(tok) if !matches!(*node.right, syn::Expr::Lit(_)) => {
+            // A divisor the reader can evaluate is not a runtime hazard.
+            BinOp::Div(tok) if !is_constant_operand(&node.right) => {
                 self.charge(self.opts.abort_weight, tok.spans[0].start().line);
             },
-            BinOp::Rem(tok) if !matches!(*node.right, syn::Expr::Lit(_)) => {
+            BinOp::Rem(tok) if !is_constant_operand(&node.right) => {
                 self.charge(self.opts.abort_weight, tok.spans[0].start().line);
             },
             _ => {},
@@ -580,13 +601,19 @@ impl<'ast> Visit<'ast> for CcCounter<'_> {
         &mut self,
         node: &'ast syn::ExprIndex,
     ) {
-        // Charged unconditionally: without type resolution a fixed-size
-        // array is indistinguishable from a `Vec`, and the marker covers
-        // the legitimate case.
-        self.charge(
-            self.opts.abort_weight,
-            node.bracket_token.span.open().start().line,
-        );
+        // Only a computed index is charged, the same line the `/` rule
+        // draws: a constant index is the compiler's problem on the shape
+        // that dominates numeric code (fixed-size arrays), and charging it
+        // buries the metric in false positives. Measured on a quaternion
+        // compose over `[i32; 4]` — 60 constant indices, CC 122 at 100%
+        // coverage, with no reachable panic anywhere in it. `v[i]` in a
+        // loop, the shape that does abort, still costs.
+        if !matches!(*node.index, syn::Expr::Lit(_)) {
+            self.charge(
+                self.opts.abort_weight,
+                node.bracket_token.span.open().start().line,
+            );
+        }
         visit::visit_expr_index(self, node);
     }
 
@@ -1231,12 +1258,31 @@ fn f(o: Option<u8>, r: Result<u8, u8>) -> u8 {
     }
 
     #[test]
-    fn indexing_and_non_literal_division_are_aborts() {
-        assert_cc("fn f(v: &[u8]) -> u8 { v[1] + v[2] + v[3] }", 1.0, 7.0);
+    fn computed_indexing_and_non_literal_division_are_aborts() {
+        assert_cc(
+            "fn f(v: &[u8], i: usize) -> u8 { v[i] + v[i + 1] }",
+            1.0,
+            5.0,
+        );
+        assert_cc(
+            "fn f(v: &[u8], a: usize, b: usize) -> &[u8] { &v[a..b] }",
+            1.0,
+            3.0,
+        );
         assert_cc("fn f(a: u8, b: u8) -> u8 { a / b }", 1.0, 3.0);
         assert_cc("fn f(a: u8, b: u8) -> u8 { a % b }", 1.0, 3.0);
-        // A literal divisor is the one case the compiler already refuses.
+        // The constant cases are the compiler's problem, not the reader's:
+        // a literal divisor it refuses outright, and a literal index it
+        // bounds-checks at compile time on the fixed-size arrays that
+        // dominate numeric code.
         assert_cc("fn f(a: u8) -> u8 { a / 2 }", 1.0, 1.0);
+        assert_cc("fn f(v: [u8; 4]) -> u8 { v[0] + v[1] + v[2] }", 1.0, 1.0);
+        // A named constant is as evaluable as the literal behind it.
+        assert_cc("fn f(a: f32) -> f32 { a / BRICK_SIZE_M }", 1.0, 1.0);
+        assert_cc("fn f(a: f32) -> f32 { a / (-SCALE as f32) }", 1.0, 1.0);
+        assert_cc("fn f(a: f32, s: f32) -> f32 { a / s }", 1.0, 3.0);
+        // A lowercase path is a binding, whatever it holds.
+        assert_cc("fn f(a: f32) -> f32 { a / scale }", 1.0, 3.0);
     }
 
     #[test]
