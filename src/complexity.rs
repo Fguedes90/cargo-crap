@@ -127,6 +127,19 @@ impl Default for CountOptions {
     }
 }
 
+/// Everything the walk needs: the weights, plus what even enters the count.
+///
+/// Separate from [`CountOptions`] because the attribute list is scope data,
+/// not a weight — and because a `Vec` cannot live in a `Copy` struct that is
+/// copied into every [`CcCounter`].
+#[derive(Debug, Clone, Default)]
+pub struct AnalysisOptions {
+    pub count: CountOptions,
+    /// Extra attribute names marking a function as a test, on top of the
+    /// built-ins. See [`is_test_fn`].
+    pub test_attributes: Vec<String>,
+}
+
 /// Analyze a single Rust source file and return every function found.
 ///
 /// Top-level module scope (the file itself) is intentionally excluded —
@@ -134,7 +147,7 @@ impl Default for CountOptions {
 /// formula produces misleading scores on large files.
 pub fn analyze_file(
     path: &Path,
-    opts: CountOptions,
+    opts: &AnalysisOptions,
 ) -> Result<Vec<FunctionComplexity>> {
     let source = std::fs::read_to_string(path)
         .with_context(|| format!("reading source file {}", path.display()))?;
@@ -145,7 +158,7 @@ pub fn analyze_file(
     let mut visitor = FunctionVisitor {
         file: path,
         out: Vec::new(),
-        impl_type: None,
+        scope_name: None,
         opts,
         exempt: &exempt,
     };
@@ -181,23 +194,71 @@ fn exempt_lines(source: &str) -> HashSet<usize> {
     out
 }
 
-/// Returns `true` if `attrs` contains an attribute with the given simple name,
-/// e.g. `has_attr(attrs, "test")` matches `#[test]`.
-fn has_attr(
+/// Attribute names marking a test function when they appear as the LAST
+/// path segment. `test` alone covers `#[test]`, `#[tokio::test]`,
+/// `#[sqlx::test]`, `#[async_std::test]`, `#[actix_web::test]` and
+/// `#[googletest::test]`; the rest are frameworks whose macro is not named
+/// `test`. A project with a macro outside this list extends it through
+/// `test-attributes` in `.cargo-crap.toml`.
+const TEST_ATTRS: &[&str] = &[
+    "test",
+    "rstest",
+    "test_case",
+    "quickcheck",
+    "proptest",
+    "bench",
+];
+
+/// A test function: some attribute whose last path segment is in
+/// [`TEST_ATTRS`] or in `extra`.
+///
+/// The LAST segment, not the whole path, because the same macro is imported
+/// under a different path in every project. Test code is excluded because it
+/// never appears in a coverage report: under `missing = pessimistic` it
+/// scores 0% and its CRAP is `cc² + cc`, so a test of cc 4 marks 20 and
+/// trips a threshold of 15.
+fn is_test_fn(
     attrs: &[syn::Attribute],
-    name: &str,
+    extra: &[String],
 ) -> bool {
-    attrs.iter().any(|a| a.path().is_ident(name))
+    attrs.iter().any(|a| {
+        a.path().segments.last().is_some_and(|seg| {
+            let name = seg.ident.to_string();
+            TEST_ATTRS.contains(&name.as_str()) || extra.contains(&name)
+        })
+    })
 }
 
-/// Returns `true` if `attrs` contains `#[cfg(test)]` exactly.
+/// `true` when `attrs` pin the item to test builds and ONLY to them.
 ///
-/// More complex forms (`#[cfg(not(test))]`, `#[cfg(any(test, ...))]`) are not
-/// matched — we only skip the common, unambiguous case.
-fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
+/// `test` and `all(…)` containing `test` (recursively) are test-only.
+/// `any(test, …)` is NOT: the item also compiles outside test builds, and
+/// skipping it would hide production code from the measurement. `not(…)` is
+/// not either, and neither is a form the parser cannot read — every
+/// ambiguity resolves toward "production", the only direction whose failure
+/// is visible in the report.
+fn is_test_only_cfg(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|a| {
-        a.path().is_ident("cfg") && a.parse_args::<syn::Ident>().is_ok_and(|id| id == "test")
+        a.path().is_ident("cfg")
+            && a.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|preds| preds.iter().any(meta_is_test_only))
     })
+}
+
+/// One `cfg` predicate: the bare `test` path, or `all(…)` with a test-only
+/// predicate somewhere inside it.
+fn meta_is_test_only(meta: &syn::Meta) -> bool {
+    match meta {
+        syn::Meta::Path(p) => p.is_ident("test"),
+        syn::Meta::List(l) if l.path.is_ident("all") => l
+            .parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|inner| inner.iter().any(meta_is_test_only)),
+        _ => false,
+    }
 }
 
 /// Extract a simple type name from an `impl` self-type for use as a prefix.
@@ -216,9 +277,10 @@ fn impl_type_name(ty: &syn::Type) -> Option<String> {
 struct FunctionVisitor<'a> {
     file: &'a Path,
     out: Vec<FunctionComplexity>,
-    /// Type name of the enclosing `impl` block, if any.
-    impl_type: Option<String>,
-    opts: CountOptions,
+    /// Name of the `impl` type or of the `trait` enclosing the method, if
+    /// any.
+    scope_name: Option<String>,
+    opts: &'a AnalysisOptions,
     /// Lines carrying a `crap-ok` marker, shared by every function in the
     /// file (the scan is per file, not per function).
     exempt: &'a HashSet<usize>,
@@ -231,7 +293,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     ) {
         // Skip test functions — they are never in LCOV output and would
         // always score as 0% covered, producing misleading CRAP scores.
-        if has_attr(&node.attrs, "test") {
+        if is_test_fn(&node.attrs, &self.opts.test_attributes) {
             return;
         }
         let name = node.sig.ident.to_string();
@@ -255,21 +317,21 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     ) {
         // Set the self-type for the duration of this impl block so that
         // visit_impl_item_fn can prefix method names with it.
-        let prev = self.impl_type.take();
-        self.impl_type = impl_type_name(&node.self_ty);
+        let prev = self.scope_name.take();
+        self.scope_name = impl_type_name(&node.self_ty);
         visit::visit_item_impl(self, node);
-        self.impl_type = prev;
+        self.scope_name = prev;
     }
 
     fn visit_impl_item_fn(
         &mut self,
         node: &'ast ImplItemFn,
     ) {
-        if has_attr(&node.attrs, "test") {
+        if is_test_fn(&node.attrs, &self.opts.test_attributes) {
             return;
         }
         let method = node.sig.ident.to_string();
-        let name = match &self.impl_type {
+        let name = match &self.scope_name {
             Some(ty) => format!("{ty}::{method}"),
             None => method,
         };
@@ -286,13 +348,54 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
         });
     }
 
+    fn visit_item_trait(
+        &mut self,
+        node: &'ast syn::ItemTrait,
+    ) {
+        let prev = self.scope_name.take();
+        self.scope_name = Some(node.ident.to_string());
+        visit::visit_item_trait(self, node);
+        self.scope_name = prev;
+    }
+
+    fn visit_trait_item_fn(
+        &mut self,
+        node: &'ast syn::TraitItemFn,
+    ) {
+        // Only the DEFAULT method has a body to measure; a required one is
+        // a signature, and each implementation of it is already measured in
+        // its own `impl`.
+        let Some(block) = node.default.as_ref() else {
+            return;
+        };
+        if is_test_fn(&node.attrs, &self.opts.test_attributes) {
+            return;
+        }
+        let method = node.sig.ident.to_string();
+        let name = match &self.scope_name {
+            Some(ty) => format!("{ty}::{method}"),
+            None => method,
+        };
+        let start_line = node.sig.fn_token.span.start().line;
+        let end_line = block.brace_token.span.close().end().line;
+        let scored = self.score(&node.sig, block);
+        self.out.push(FunctionComplexity {
+            file: self.file.to_path_buf(),
+            name,
+            start_line,
+            end_line,
+            cyclomatic: scored.count,
+            abort_ok: scored.abort_ok,
+        });
+    }
+
     fn visit_item_mod(
         &mut self,
         node: &'ast syn::ItemMod,
     ) {
         // Skip the entire #[cfg(test)] module — functions inside it will
         // never appear in coverage reports and would all score pessimistically.
-        if !is_cfg_test(&node.attrs) {
+        if !is_test_only_cfg(&node.attrs) {
             visit::visit_item_mod(self, node);
         }
     }
@@ -309,13 +412,13 @@ impl FunctionVisitor<'_> {
         let mut counter = CcCounter {
             count: 1.0,
             abort_ok: 0,
-            opts: self.opts,
+            opts: self.opts.count,
             exempt: self.exempt,
             suppress_arms: false,
         };
         counter.visit_block(block);
         if let Some(tok) = sig.unsafety {
-            counter.charge(self.opts.unsafe_weight, tok.span.start().line);
+            counter.charge(self.opts.count.unsafe_weight, tok.span.start().line);
         }
         CcResult {
             count: counter.count,
@@ -700,7 +803,7 @@ fn build_exclude_set<S: AsRef<str>>(patterns: &[S]) -> Result<GlobSet> {
 pub fn analyze_tree<S: AsRef<str>>(
     root: &Path,
     excludes: &[S],
-    opts: CountOptions,
+    opts: &AnalysisOptions,
 ) -> Result<Vec<FunctionComplexity>> {
     let exclude_set = build_exclude_set(excludes)?;
 
@@ -774,7 +877,7 @@ mod tests {
     #[test]
     fn trivial_function_has_cc_one() {
         let f = write_temp("fn hello() -> i32 { 42 }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "hello");
         assert_eq!(fns[0].cyclomatic, 1.0);
@@ -795,7 +898,7 @@ fn check(x: i32) -> &'static str {
 }
 "#,
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns.len(), 1);
         assert!(
             fns[0].cyclomatic >= 3.0,
@@ -818,7 +921,7 @@ fn outer() -> i32 {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns.len(), 1, "nested fns are not extracted as entries");
         assert_eq!(fns[0].name, "outer");
         assert_eq!(
@@ -851,7 +954,7 @@ fn outer() -> u32 {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns.len(), 1);
         assert_eq!(
             fns[0].cyclomatic, 1.0,
@@ -872,7 +975,7 @@ fn outer(x: i32) -> i32 {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns.len(), 1);
         assert_eq!(
             fns[0].cyclomatic, 2.0,
@@ -889,7 +992,7 @@ fn b() {}
 fn c() {}
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(names.contains(&"a"));
         assert!(names.contains(&"b"));
@@ -900,7 +1003,7 @@ fn c() {}
     fn for_loop_adds_one_to_cc() {
         // Kills: visit_expr_for_loop replaced with (), += with -=, += with *=
         let f = write_temp("fn foo(n: i32) -> i32 { let mut s = 0; for _i in 0..n { s += 1; } s }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(
             fns[0].cyclomatic, 2.0,
             "for loop must add exactly 1 to base CC"
@@ -911,7 +1014,7 @@ fn c() {}
     fn while_loop_adds_one_to_cc() {
         // Kills: visit_expr_while replaced with (), += with -=, += with *=
         let f = write_temp("fn foo(mut n: i32) -> i32 { while n > 0 { n -= 1; } n }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(
             fns[0].cyclomatic, 2.0,
             "while loop must add exactly 1 to base CC"
@@ -922,7 +1025,7 @@ fn c() {}
     fn loop_expr_adds_one_to_cc() {
         // Kills: visit_expr_loop replaced with (), += with -=, += with *=
         let f = write_temp("fn foo() { loop { break; } }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns[0].cyclomatic, 2.0, "loop must add exactly 1 to base CC");
     }
 
@@ -930,7 +1033,7 @@ fn c() {}
     fn match_arms_each_add_one_to_cc() {
         // Kills: visit_arm replaced with (), += with -=, += with *=
         let f = write_temp("fn foo(x: u8) -> u8 { match x { 0 => 1, 1 => 2, _ => 3 } }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns[0].cyclomatic, 4.0, "3-arm match must add 3 to base CC");
     }
 
@@ -938,7 +1041,7 @@ fn c() {}
     fn logical_and_adds_one_to_cc() {
         // Kills: visit_expr_binary replaced with (), += with -=, += with *=
         let f = write_temp("fn foo(a: bool, b: bool) -> bool { a && b }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns[0].cyclomatic, 2.0, "&& must add exactly 1 to base CC");
     }
 
@@ -946,7 +1049,7 @@ fn c() {}
     fn logical_or_adds_one_to_cc() {
         // Kills: visit_expr_binary for || case
         let f = write_temp("fn foo(a: bool, b: bool) -> bool { a || b }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns[0].cyclomatic, 2.0, "|| must add exactly 1 to base CC");
     }
 
@@ -954,7 +1057,7 @@ fn c() {}
     fn bitwise_ops_do_not_increase_cc() {
         // & and | are not control flow — they must NOT add to CC.
         let f = write_temp("fn foo(a: u8, b: u8) -> u8 { a & b | a }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(fns[0].cyclomatic, 1.0, "bitwise ops must not affect CC");
     }
 
@@ -962,7 +1065,7 @@ fn c() {}
     fn try_operator_adds_one_to_cc() {
         // Kills: visit_expr_try replaced with (), += with -=, += with *=
         let f = write_temp("fn foo() -> Option<i32> { let x: Option<i32> = Some(1); Some(x?) }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(
             fns[0].cyclomatic, 2.0,
             "? operator must add exactly 1 to base CC"
@@ -973,7 +1076,7 @@ fn c() {}
     fn closure_decisions_not_counted_in_enclosing_fn() {
         // A closure with branches must not inflate the outer function's CC.
         let f = write_temp("fn foo() -> i32 { let f = |x: i32| if x > 0 { x } else { -x }; f(1) }");
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         assert_eq!(
             fns[0].cyclomatic, 1.0,
             "closure branches must not leak into outer CC"
@@ -993,7 +1096,7 @@ impl Foo {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(
             names.contains(&"Foo::bar"),
@@ -1026,7 +1129,7 @@ fn test_real() {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(names.contains(&"real"), "production fn must be present");
         assert!(
@@ -1056,7 +1159,7 @@ mod tests {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(names.contains(&"real"), "production fn must be present");
         assert!(
@@ -1073,8 +1176,8 @@ mod tests {
     fn non_cfg_test_module_functions_are_included() {
         // Kills: replacing visit_item_mod with () — a no-op body would skip
         // ALL module traversal, not just #[cfg(test)] ones.
-        // Also kills: replacing is_cfg_test with `true` — everything would
-        // look like a test module and be skipped.
+        // Also kills: replacing is_test_only_cfg with `true` — everything
+        // would look like a test module and be skipped.
         let f = write_temp(
             r"
 mod inner {
@@ -1082,7 +1185,7 @@ mod inner {
 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(
             names.contains(&"in_module"),
@@ -1092,7 +1195,7 @@ mod inner {
 
     #[test]
     fn cfg_feature_module_is_not_skipped() {
-        // Kills: replacing `&&` with `||` in is_cfg_test — that mutation
+        // Kills: replacing `&&` with `||` in is_test_only_cfg — that mutation
         // would make any `#[cfg(...)]` attribute look like #[cfg(test)],
         // causing #[cfg(feature = "...")] modules to be wrongly excluded.
         let f = write_temp(
@@ -1103,11 +1206,293 @@ mod extra {
 }
 "#,
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(
             names.contains(&"feature_fn"),
             "#[cfg(feature = ...)] mod must not be skipped, got: {names:?}"
+        );
+    }
+
+    // --- spec 33: framework test attributes and `cfg` predicates ---
+
+    /// Extracted function names for `source`, under `opts`.
+    fn names_of(
+        source: &str,
+        opts: &AnalysisOptions,
+    ) -> Vec<String> {
+        let f = write_temp(source);
+        analyze_file(f.path(), opts)
+            .expect("analyze")
+            .into_iter()
+            .map(|fc| fc.name)
+            .collect()
+    }
+
+    #[test]
+    fn framework_test_attributes_are_skipped() {
+        // Kills the old `path().is_ident("test")`: it matches only the
+        // single-segment `test`, so every one of these entered the report.
+        let names = names_of(
+            r"
+#[tokio::test]
+async fn a() {}
+
+#[rstest]
+fn b() {}
+
+#[sqlx::test]
+async fn c() {}
+
+#[test_case(1)]
+fn d() {}
+
+pub fn test_helper() {}
+",
+            &AnalysisOptions::default(),
+        );
+        assert_eq!(
+            names,
+            vec!["test_helper".to_string()],
+            "recognition is by attribute, never by name"
+        );
+    }
+
+    #[test]
+    fn an_extra_test_attribute_comes_from_config() {
+        // Kills dropping `extra` from is_test_fn, and kills assuming an
+        // unknown attribute means test.
+        const SRC: &str = r"
+#[my_marker]
+fn e() {}
+";
+        assert_eq!(
+            names_of(SRC, &AnalysisOptions::default()),
+            vec!["e".to_string()],
+            "an unknown attribute is not assumed to mean test"
+        );
+        assert!(
+            names_of(
+                SRC,
+                &AnalysisOptions {
+                    test_attributes: vec!["my_marker".to_string()],
+                    ..Default::default()
+                },
+            )
+            .is_empty(),
+            "the configured marker must skip the function"
+        );
+    }
+
+    #[test]
+    fn cfg_all_test_module_is_skipped_and_cfg_any_test_is_not() {
+        // The asymmetry is the contract: `all` is test-only, `any` and
+        // `not` also compile outside test builds, and skipping them would
+        // hide production code from the measurement.
+        let names = names_of(
+            r#"
+#[cfg(all(test, feature = "x"))]
+mod a {
+    pub fn ga() {}
+}
+
+#[cfg(any(test, feature = "x"))]
+mod b {
+    pub fn gb() {}
+}
+
+#[cfg(not(test))]
+fn gc() {}
+"#,
+            &AnalysisOptions::default(),
+        );
+        assert!(
+            !names.contains(&"ga".to_string()),
+            "all(test, …) is test-only, got: {names:?}"
+        );
+        assert!(
+            names.contains(&"gb".to_string()),
+            "any(test, …) also compiles outside test builds, got: {names:?}"
+        );
+        assert!(
+            names.contains(&"gc".to_string()),
+            "not(test) is production, got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn nested_all_inside_all_is_still_test_only() {
+        // Kills a non-recursive meta_is_test_only: only the outer `all`'s
+        // direct predicates would be inspected.
+        let names = names_of(
+            r#"
+#[cfg(all(unix, all(test, feature = "x")))]
+mod a {
+    pub fn deep() {}
+}
+"#,
+            &AnalysisOptions::default(),
+        );
+        assert!(names.is_empty(), "got: {names:?}");
+    }
+
+    #[test]
+    fn an_unparseable_cfg_argument_never_excludes() {
+        // A form the tool cannot read must resolve to production: removing
+        // code from the measurement is the failure the report cannot show.
+        let names = names_of(
+            r#"
+#[cfg("not a predicate")]
+mod a {
+    pub fn unreadable() {}
+}
+"#,
+            &AnalysisOptions::default(),
+        );
+        assert!(names.contains(&"unreadable".to_string()), "got: {names:?}");
+    }
+
+    // --- spec 34: trait default methods ---
+
+    #[test]
+    fn trait_default_method_is_extracted_and_named_by_its_trait() {
+        // Kills the missing visit_trait_item_fn: `Policy::decide` appeared
+        // in no profile's report at all.
+        let names = names_of(
+            r"
+trait Policy {
+    fn decide(&self, x: u8) -> u8 {
+        if x > 200 {
+            return 0;
+        }
+        match x {
+            0 => 1,
+            1 => 2,
+            _ => 3,
+        }
+    }
+    fn required(&self, x: u8) -> u8;
+}
+
+struct S;
+impl Policy for S {
+    fn required(&self, x: u8) -> u8 {
+        if x > 1 { 1 } else { 0 }
+    }
+}
+",
+            &AnalysisOptions::default(),
+        );
+        assert_eq!(
+            names,
+            vec!["Policy::decide".to_string(), "S::required".to_string()],
+            "a default method is named by its trait, an override by its type"
+        );
+        assert_eq!(
+            cc(
+                r"
+trait Policy {
+    fn decide(&self, x: u8) -> u8 {
+        if x > 200 {
+            return 0;
+        }
+        match x {
+            0 => 1,
+            1 => 2,
+            _ => 3,
+        }
+    }
+}
+",
+                Profile::Classic,
+            ),
+            5.0,
+            "1 base + 1 if + 3 match arms"
+        );
+    }
+
+    #[test]
+    fn a_required_trait_method_has_no_body_to_measure() {
+        // Kills scoring a signature as an entry: `node.default` is None and
+        // every implementation is already measured in its own `impl`.
+        assert!(
+            names_of(
+                r"
+trait T {
+    fn f(&self) -> u8;
+}
+",
+                &AnalysisOptions::default(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_override_and_its_default_are_separate_entries() {
+        let names = names_of(
+            r"
+trait T {
+    fn f(&self) -> u8 { 1 }
+}
+
+struct S;
+impl T for S {
+    fn f(&self) -> u8 {
+        if true { 1 } else { 2 }
+    }
+}
+",
+            &AnalysisOptions::default(),
+        );
+        assert_eq!(names, vec!["T::f".to_string(), "S::f".to_string()]);
+    }
+
+    #[test]
+    fn an_unsafe_trait_default_pays_the_signature_surcharge() {
+        // The `unsafe fn` charge comes from the signature, so the default
+        // method must reach `score` with its own signature, not the block
+        // alone.
+        const SRC: &str = r"
+trait T {
+    unsafe fn f(&self) {}
+}
+";
+        assert_eq!(cc(SRC, Profile::Classic), 1.0);
+        assert_eq!(cc(SRC, Profile::Strict), 3.0);
+    }
+
+    #[test]
+    fn a_test_attributed_trait_default_is_skipped() {
+        assert!(
+            names_of(
+                r"
+trait T {
+    #[tokio::test]
+    async fn f() {}
+}
+",
+                &AnalysisOptions::default(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_trait_inside_a_cfg_test_module_stays_out_of_the_report() {
+        assert!(
+            names_of(
+                r"
+#[cfg(test)]
+mod tests {
+    trait T {
+        fn f(&self) -> u8 { 1 }
+    }
+}
+",
+                &AnalysisOptions::default(),
+            )
+            .is_empty()
         );
     }
 
@@ -1120,7 +1505,7 @@ mod extra {
 fn allowed() -> i32 { 42 }
 ",
         );
-        let fns = analyze_file(f.path(), CountOptions::default()).expect("analyze");
+        let fns = analyze_file(f.path(), &AnalysisOptions::default()).expect("analyze");
         let names: Vec<_> = fns.iter().map(|fc| fc.name.as_str()).collect();
         assert!(
             names.contains(&"allowed"),
@@ -1146,7 +1531,7 @@ fn allowed() -> i32 { 42 }
         fs::write(generated.join("proto.rs"), "fn excluded() -> i32 { 1 }")
             .expect("write proto.rs");
 
-        let results = analyze_tree(dir.path(), &["generated/**"], CountOptions::default())
+        let results = analyze_tree(dir.path(), &["generated/**"], &AnalysisOptions::default())
             .expect("analyze_tree");
         let names: Vec<_> = results.iter().map(|f| f.name.as_str()).collect();
         assert!(names.contains(&"kept"), "src/lib.rs fn must appear");
@@ -1163,7 +1548,7 @@ fn allowed() -> i32 { 42 }
         let dir = tempfile::tempdir().expect("tempdir");
         fs::write(dir.path().join("lib.rs"), "fn foo() -> i32 { 1 }").expect("write");
 
-        let results = analyze_tree(dir.path(), &[] as &[&str], CountOptions::default())
+        let results = analyze_tree(dir.path(), &[] as &[&str], &AnalysisOptions::default())
             .expect("analyze_tree");
         assert!(!results.is_empty(), "no excludes must keep all files");
     }
@@ -1172,7 +1557,7 @@ fn allowed() -> i32 { 42 }
     fn invalid_exclude_pattern_returns_error() {
         // Kills: silently ignoring invalid patterns.
         let dir = tempfile::tempdir().expect("tempdir");
-        let result = analyze_tree(dir.path(), &["[invalid"], CountOptions::default());
+        let result = analyze_tree(dir.path(), &["[invalid"], &AnalysisOptions::default());
         assert!(result.is_err(), "invalid glob must return an error");
     }
 
@@ -1186,15 +1571,28 @@ fn allowed() -> i32 { 42 }
         profile: Profile,
     ) -> f64 {
         let f = write_temp(source);
-        let fns = analyze_file(f.path(), CountOptions::for_profile(profile)).expect("analyze");
+        let fns = analyze_file(
+            f.path(),
+            &AnalysisOptions {
+                count: CountOptions::for_profile(profile),
+                ..Default::default()
+            },
+        )
+        .expect("analyze");
         fns[0].cyclomatic
     }
 
     /// `(strict CC, exonerations)` for the first function in `source`.
     fn cc_strict_with_exonerations(source: &str) -> (f64, usize) {
         let f = write_temp(source);
-        let fns =
-            analyze_file(f.path(), CountOptions::for_profile(Profile::Strict)).expect("analyze");
+        let fns = analyze_file(
+            f.path(),
+            &AnalysisOptions {
+                count: CountOptions::for_profile(Profile::Strict),
+                ..Default::default()
+            },
+        )
+        .expect("analyze");
         (fns[0].cyclomatic, fns[0].abort_ok)
     }
 
@@ -1592,8 +1990,14 @@ fn f(m: &std::collections::HashMap<u8, u8>) -> u8 {
         let f = write_temp(
             "fn f(o: Option<u8>) -> u8 { o.unwrap() } // crap-ok: checked by the caller",
         );
-        let fns =
-            analyze_file(f.path(), CountOptions::for_profile(Profile::Classic)).expect("analyze");
+        let fns = analyze_file(
+            f.path(),
+            &AnalysisOptions {
+                count: CountOptions::for_profile(Profile::Classic),
+                ..Default::default()
+            },
+        )
+        .expect("analyze");
         assert_eq!(fns[0].cyclomatic, 1.0);
         assert_eq!(fns[0].abort_ok, 0);
     }
@@ -1602,12 +2006,15 @@ fn f(m: &std::collections::HashMap<u8, u8>) -> u8 {
     fn weights_are_configurable_on_top_of_the_profile() {
         // Kills a mutated weight: the charge is the configured number, not
         // a hardcoded 2.0 or a mere +1 per abort.
-        let opts = CountOptions {
-            abort_weight: 5.0,
-            ..CountOptions::for_profile(Profile::Strict)
+        let opts = AnalysisOptions {
+            count: CountOptions {
+                abort_weight: 5.0,
+                ..CountOptions::for_profile(Profile::Strict)
+            },
+            ..Default::default()
         };
         let f = write_temp("fn f(o: Option<u8>) -> u8 { o.unwrap() }");
-        let fns = analyze_file(f.path(), opts).expect("analyze");
+        let fns = analyze_file(f.path(), &opts).expect("analyze");
         assert_eq!(fns[0].cyclomatic, 6.0);
     }
 

@@ -34,9 +34,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JSON envelope carries `profile` and `abort_ok_count`, and each
   entry an `abort_ok`, all omitted when absent or zero — a `classic`
   envelope is byte-identical to a pre-profile one.
+- **`test-attributes`, and framework test macros recognized at all**
+  (spec 33). Test-function detection compared the whole attribute path
+  with `test`, so `#[test]` was skipped and `#[tokio::test]`,
+  `#[sqlx::test]`, `#[rstest]`, `#[test_case(…)]` were **measured** —
+  and, never appearing in coverage, scored `cc² + cc`, so a test of
+  cc 4 marked 20 and tripped a threshold of 15. Detection now matches
+  the last path segment against `test`, `rstest`, `test_case`,
+  `quickcheck`, `proptest`, `bench`, plus anything listed in the new
+  `test-attributes` config key. Recognition is by attribute, never by
+  name: a production `fn test_connection` stays measured.
+- A module gated `#[cfg(all(test, feature = "x"))]` is now skipped
+  whole, like `#[cfg(test)]` (spec 33). `#[cfg(any(test, …))]` and
+  `#[cfg(not(test))]` deliberately are **not**: such an item also
+  compiles outside test builds, and skipping it would hide production
+  code from the measurement.
 
 The default is `classic`, byte for byte: every number this tool printed
 before this release, it still prints.
+
+### Fixed
+
+- **A trait method with a default body is measured** (spec 34). The
+  visitor implemented `visit_item_fn` and `visit_impl_item_fn` but not
+  `visit_trait_item_fn`, so a default body — where a trait puts the
+  algorithm every implementor shares, often the most complex thing in
+  the file — had no entry, no score, no report row and no gate. It now
+  appears as `Trait::method`, coexisting with each override's
+  `Type::method`. A trait method without a body is a signature and
+  still produces nothing.
 
 ## [0.4.3] - 2026-08-06
 

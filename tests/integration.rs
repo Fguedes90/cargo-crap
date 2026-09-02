@@ -28,7 +28,7 @@ fn end_to_end_pipeline_produces_ranked_scores() {
     let complexity = complexity::analyze_tree(
         &root.join("src"),
         &[] as &[&str],
-        complexity::CountOptions::default(),
+        &complexity::AnalysisOptions::default(),
     )
     .expect("analyze_tree");
     let names: Vec<_> = complexity.iter().map(|f| f.name.as_str()).collect();
@@ -104,7 +104,7 @@ fn json_output_round_trips() {
     let complexity = complexity::analyze_tree(
         &root.join("src"),
         &[] as &[&str],
-        complexity::CountOptions::default(),
+        &complexity::AnalysisOptions::default(),
     )
     .expect("analyze_tree");
     let coverage = coverage::parse_lcov(&root.join("lcov.info")).expect("parse_lcov");
@@ -156,7 +156,7 @@ fn coverage_of_one_line_match(
     let complexity = complexity::analyze_tree(
         &root.join("src"),
         &[] as &[&str],
-        complexity::CountOptions::default(),
+        &complexity::AnalysisOptions::default(),
     )
     .expect("analyze_tree");
     let path = root.join(coverage_file);

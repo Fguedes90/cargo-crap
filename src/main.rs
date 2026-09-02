@@ -407,7 +407,7 @@ fn analyze_sources(
     path: &std::path::Path,
     excludes: &[String],
     jobs: Option<usize>,
-    opts: complexity::CountOptions,
+    opts: &complexity::AnalysisOptions,
 ) -> Result<AnalyzedSources> {
     if let Some(n) = jobs {
         rayon::ThreadPoolBuilder::new()
@@ -433,7 +433,7 @@ fn analyze_sources(
 fn analyze_workspace_members(
     packages: &[String],
     excludes: &[String],
-    opts: complexity::CountOptions,
+    opts: &complexity::AnalysisOptions,
 ) -> Result<AnalyzedSources> {
     let (workspace_root, discovered) = workspace_members()?;
     let members = if packages.is_empty() {
@@ -1276,7 +1276,7 @@ fn run() -> Result<ExitCode> {
         &cli.path,
         &effective_exclude,
         jobs,
-        metric.options,
+        &metric.options,
     )?;
 
     let strict = strict_summary(&fns, metric.profile, metric.max_abort_ok);

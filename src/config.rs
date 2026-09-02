@@ -31,7 +31,7 @@
 //! max-abort-ok = 12
 //! ```
 
-use crate::complexity::{CountOptions, Profile};
+use crate::complexity::{AnalysisOptions, CountOptions, Profile};
 use crate::merge::{MissingCoveragePolicy, SortOrder};
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -147,6 +147,14 @@ pub struct Config {
     /// count is still reported under `strict`, because an escape hatch
     /// nobody counts rots.
     pub max_abort_ok: Option<usize>,
+
+    /// Extra attribute names marking a function as a test, on top of the
+    /// built-ins (`test` as the last path segment, plus `rstest`,
+    /// `test_case`, `quickcheck`, `proptest`, `bench`). Config-only, like
+    /// every scope knob: a set of measured functions that changed per run
+    /// would make two baselines incomparable.
+    #[serde(default)]
+    pub test_attributes: Vec<String>,
 }
 
 impl Config {
@@ -195,7 +203,10 @@ impl Config {
     /// another.
     pub fn metric_settings(&self) -> Result<MetricSettings> {
         Ok(MetricSettings {
-            options: self.count_options()?,
+            options: AnalysisOptions {
+                count: self.count_options()?,
+                test_attributes: self.test_attributes.clone(),
+            },
             profile: self.profile.unwrap_or_default(),
             max_abort_ok: self.max_abort_ok,
         })
@@ -204,9 +215,9 @@ impl Config {
 
 /// The resolved metric contract: what to count, under which name, against
 /// which exoneration ratchet.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MetricSettings {
-    pub options: CountOptions,
+    pub options: AnalysisOptions,
     pub profile: Profile,
     pub max_abort_ok: Option<usize>,
 }
@@ -433,6 +444,29 @@ allow = ["Foo::*"]
         assert_eq!(
             cfg.metric_settings().expect("resolve").profile,
             Profile::Classic
+        );
+    }
+
+    #[test]
+    fn test_attributes_reach_the_resolved_analysis_options() {
+        // Kills dropping the clone in metric_settings: the list is scope
+        // data, and a run that resolves it empty measures test code.
+        let cfg: Config = toml::from_str("test-attributes = [\"my_marker\"]\n").expect("parse");
+        assert_eq!(
+            cfg.metric_settings()
+                .expect("resolve")
+                .options
+                .test_attributes,
+            vec!["my_marker".to_string()]
+        );
+        let empty: Config = toml::from_str("").expect("parse");
+        assert!(
+            empty
+                .metric_settings()
+                .expect("resolve")
+                .options
+                .test_attributes
+                .is_empty()
         );
     }
 }

@@ -59,7 +59,7 @@
 //! let fns = complexity::analyze_tree(
 //!     std::path::Path::new("src"),
 //!     &[] as &[&str],
-//!     complexity::CountOptions::default(),
+//!     &complexity::AnalysisOptions::default(),
 //! )?;
 //!
 //! // 2. Parse the LCOV report produced by `cargo llvm-cov --lcov`.
@@ -90,7 +90,7 @@
 //! let fns = complexity::analyze_tree(
 //!     std::path::Path::new("src"),
 //!     &[] as &[&str],
-//!     complexity::CountOptions::default(),
+//!     &complexity::AnalysisOptions::default(),
 //! )?;
 //! let cov = coverage::parse_lcov(std::path::Path::new("lcov.info"))?;
 //! let entries = merge(fns, cov, MissingCoveragePolicy::Pessimistic).entries;
@@ -126,7 +126,7 @@
 //! let fns = complexity::analyze_tree(
 //!     std::path::Path::new("src"),
 //!     &[] as &[&str],
-//!     complexity::CountOptions::default(),
+//!     &complexity::AnalysisOptions::default(),
 //! )?;
 //! let cov = coverage::parse_lcov(std::path::Path::new("lcov.info"))?;
 //! let entries = merge(fns, cov, MissingCoveragePolicy::Pessimistic).entries;

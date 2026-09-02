@@ -4577,3 +4577,49 @@ fn a_function_absent_from_the_export_falls_through_to_the_missing_policy() {
         "`skip` drops the unmatched function entirely: {skip}"
     );
 }
+
+#[test]
+fn a_trait_default_method_reaches_the_report() {
+    // The visitor fix has to survive the whole binary: a default body is
+    // ordinary logic, and a `#[tokio::test]` beside it is not. Before spec
+    // 34, `Policy::decide` appeared in no report at all.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("src/lib.rs"),
+        r"
+pub trait Policy {
+    fn decide(&self, x: u8) -> u8 {
+        if x > 200 { 0 } else { x }
+    }
+}
+
+#[tokio::test]
+async fn decides_above_the_cut() {
+    if true { assert!(true) } else { assert!(false) }
+}
+",
+    )
+    .expect("write source");
+
+    let output = cmd()
+        .arg("--path")
+        .arg(dir.path().join("src"))
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let entries = parse_entries(&stdout);
+    let names: Vec<&str> = entries
+        .as_array()
+        .expect("entries")
+        .iter()
+        .map(|e| e["function"].as_str().expect("function name"))
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Policy::decide"],
+        "the default body is measured, the framework test is not: {stdout}"
+    );
+}

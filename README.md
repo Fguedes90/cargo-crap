@@ -267,6 +267,13 @@ total-match-once        = true  # a `match` total by construction costs 1, not 1
 # markers are in effect than this. Absent = no enforcement, but the count
 # is always reported under a non-classic profile.
 max-abort-ok = 12
+# Extra attribute names marking a function as a test, on top of the
+# built-ins: `test` as the LAST path segment (so `#[test]`,
+# `#[tokio::test]`, `#[sqlx::test]`, `#[async_std::test]` all match),
+# plus `rstest`, `test_case`, `quickcheck`, `proptest`, `bench`. Only
+# needed for a project's own test macro. Recognition is never by
+# function name: `fn test_connection` is production code.
+test-attributes = ["my_marker"]
 ```
 
 All keys are optional. Unknown keys are rejected to catch typos.
